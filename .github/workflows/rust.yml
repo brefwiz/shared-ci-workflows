@@ -89,7 +89,9 @@ jobs:
         with:
           repository: brefwiz/shared-ci-workflows
           path: .shared-ci-workflows
-          sparse-checkout: policies
+          sparse-checkout: |
+            policies
+            scripts
 
       - name: Check policy expiry
         if: inputs.use-central-policies
