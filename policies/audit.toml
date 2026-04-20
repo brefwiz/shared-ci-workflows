@@ -1,0 +1,23 @@
+# Central cargo-audit config for all brefwiz Rust repos.
+#
+# cargo-audit itself has no native expiry field. Each ignored advisory MUST
+# carry a `# review-by: YYYY-MM-DD` comment on the line immediately above it,
+# set to today + 90 days. scripts/check-policy-expiry.sh enforces this.
+
+[advisories]
+ignore = [
+    # rustls-webpki 0.101.7 via rustls 0.21 → aws-smithy-http-client 1.1.12.
+    # AWS SDK has not yet migrated to rustls 0.22+ (which carries the fix).
+    # Both CVEs concern TLS cert name-constraint edge cases not triggered by
+    # AWS service endpoint calls. Remove once aws-smithy-http-client ≥ rustls 0.22.
+    # Tracking: https://git.brefwiz.com/brefwiz/sealwiz/issues/73
+    # review-by: 2026-07-15
+    "RUSTSEC-2026-0098",
+    # review-by: 2026-07-15
+    "RUSTSEC-2026-0099",
+    # rsa Marvin Attack timing side-channel, pulled in by sqlx-mysql via the
+    # sqlx 0.8 lockfile. sealwiz-postgres only enables sqlx's `postgres`
+    # feature, so the MySQL + RSA code is never linked. No upstream fix yet.
+    # review-by: 2026-07-15
+    "RUSTSEC-2023-0071",
+]

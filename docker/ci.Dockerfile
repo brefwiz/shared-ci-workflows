@@ -1,0 +1,98 @@
+# ci — Full CI Image (rebuilt 2026-04-13)
+# ===================
+# Extends ci-base with the Rust toolchain and cargo tools.
+# Rebuild this layer when: Rust version or cargo tool versions change.
+# ci-base rebuild does NOT require this image to be rebuilt — it will
+# pick up the new base automatically on next push to main.
+#
+# Added tooling (on top of ci-base):
+#   - Rust stable (rustfmt, clippy, llvm-tools-preview)
+#   - Fast linker: mold + clang (already in base, wired up here)
+#   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli
+
+ARG RUST_VERSION=1.94
+ARG CARGO_NEXTEST_VERSION=0.9.114
+ARG CARGO_LLVM_COV_VERSION=0.8.4
+ARG CARGO_CHEF_VERSION=0.1.77
+ARG SQLX_CLI_VERSION=0.8.6
+ARG CARGO_DENY_VERSION=0.19.4
+ARG CARGO_HACK_VERSION=0.6.37
+ARG SCCACHE_VERSION=0.10.0
+# Pins this ci image to a specific ci-base release (e.g. v1.2.3).
+# Defaults to :latest for CI builds; the release workflow overrides this
+# to the matching ci-base release tag so each ci release is a reproducible
+# stack (ci:v1.2.3 → ci-base:v1.2.3).
+ARG CI_BASE_TAG=latest
+
+FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}
+
+ARG RUST_VERSION
+ARG CARGO_NEXTEST_VERSION
+ARG CARGO_LLVM_COV_VERSION
+ARG CARGO_CHEF_VERSION
+ARG SQLX_CLI_VERSION
+ARG CARGO_DENY_VERSION
+ARG CARGO_HACK_VERSION
+ARG SCCACHE_VERSION
+
+# ── Rust toolchain ─────────────────────────────────────────────────────────────
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN mkdir -p /usr/local/cargo /usr/local/rustup \
+    && chmod -R a+rwX /usr/local/cargo /usr/local/rustup
+
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
+      -y \
+      --no-modify-path \
+      --profile minimal \
+      --default-toolchain ${RUST_VERSION} \
+    && rustup component add rustfmt clippy llvm-tools-preview \
+    && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+    && rustc --version && cargo --version
+
+# ── Cargo tools ───────────────────────────────────────────────────────────────
+RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
+    && cargo install cargo-llvm-cov --version ${CARGO_LLVM_COV_VERSION} --locked \
+    && cargo install cargo-chef --version ${CARGO_CHEF_VERSION} --locked \
+    && cargo install cargo-hack --version ${CARGO_HACK_VERSION} --locked \
+    && cargo install cargo-audit --locked \
+    && cargo install cargo-deny --version ${CARGO_DENY_VERSION} --locked \
+    && cargo install sqlx-cli \
+        --version ${SQLX_CLI_VERSION} \
+        --no-default-features \
+        --features native-tls,postgres \
+        --locked \
+    && cargo install sccache --version ${SCCACHE_VERSION} --locked \
+    && rm -rf ${CARGO_HOME}/registry/cache \
+    && cargo nextest --version \
+    && cargo llvm-cov --version \
+    && cargo chef --version \
+    && cargo hack --version \
+    && cargo audit --version \
+    && cargo deny --version \
+    && sqlx --version \
+    && sccache --version
+
+# ── CI-optimised Rust defaults ────────────────────────────────────────────────
+# sccache: RUSTC_WRAPPER is NOT set globally — jobs opt in by setting it to
+# sccache when /var/cache/sccache is mounted in. Defaults for dir/size are set
+# so opt-in jobs only need the one env var.
+ENV CARGO_TERM_COLOR=always \
+    CARGO_INCREMENTAL=0 \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang \
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
+    RUST_BACKTRACE=1 \
+    SQLX_OFFLINE=true \
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=30G \
+    SCCACHE_IDLE_TIMEOUT=0
+
+# ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
+RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
+
+# ── Labels ────────────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="ci" \
+      org.opencontainers.image.description="Full CI image — ci-base + Rust toolchain + cargo tools" \
+      org.opencontainers.image.source="https://github.com/brefwiz/shared-ci-workflows"

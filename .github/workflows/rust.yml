@@ -1,0 +1,120 @@
+name: Rust CI (reusable)
+
+# Called by downstream repos:
+#
+#   jobs:
+#     ci:
+#       uses: brefwiz/shared-ci-workflows/.github/workflows/rust.yml@main
+#       with:
+#         run-coverage: true
+
+on:
+  workflow_call:
+    inputs:
+      run-coverage:
+        description: Collect LLVM coverage and upload to Codecov
+        type: boolean
+        default: false
+      use-central-policies:
+        description: Use policies/ from this repo for cargo-audit and cargo-deny
+        type: boolean
+        default: true
+      extra-test-flags:
+        description: Extra flags appended to `cargo nextest run`
+        type: string
+        default: ""
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo fmt
+        run: cargo fmt --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clippy (all features)
+        run: cargo clippy --workspace --all-features -- -D warnings
+      - name: Clippy (no default features)
+        run: cargo clippy --workspace --no-default-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test (all features)
+        run: cargo nextest run --workspace --all-features ${{ inputs.extra-test-flags }}
+      - name: Test (no default features)
+        run: cargo nextest run --workspace --no-default-features ${{ inputs.extra-test-flags }}
+
+  no-std:
+    name: no_std
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check (no_std, core only)
+        run: cargo check --workspace --no-default-features
+      - name: Check (no_std + alloc)
+        run: cargo check --workspace --no-default-features --features alloc
+
+  security:
+    name: Security (audit + deny)
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch central policies
+        if: inputs.use-central-policies
+        uses: actions/checkout@v4
+        with:
+          repository: brefwiz/shared-ci-workflows
+          path: .shared-ci-workflows
+          sparse-checkout: policies
+
+      - name: Check policy expiry
+        if: inputs.use-central-policies
+        run: bash .shared-ci-workflows/scripts/check-policy-expiry.sh
+              .shared-ci-workflows/policies/audit.toml
+              .shared-ci-workflows/policies/deny.toml
+
+      - name: cargo audit (central)
+        if: inputs.use-central-policies
+        run: cargo audit --file .shared-ci-workflows/policies/audit.toml
+
+      - name: cargo audit (local)
+        if: "!inputs.use-central-policies"
+        run: cargo audit
+
+      - name: cargo deny (central)
+        if: inputs.use-central-policies
+        run: cargo deny --config .shared-ci-workflows/policies/deny.toml check
+
+      - name: cargo deny (local)
+        if: "!inputs.use-central-policies"
+        run: cargo deny check
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    container: ghcr.io/brefwiz/ci:latest
+    if: inputs.run-coverage
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false

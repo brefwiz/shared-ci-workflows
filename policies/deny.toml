@@ -1,0 +1,112 @@
+# Central cargo-deny policy for all brefwiz Rust repos.
+#
+# Allowlist entries under [advisories.ignore] MUST be preceded by a
+# `# review-by: YYYY-MM-DD` comment set to today + 90 days. The sidecar
+# scripts/check-policy-expiry.sh fails CI past that date, forcing review.
+# (cargo-deny does not accept `expires` as an ignore-tuple key in the
+# version shipped in ci-base, so we enforce expiry out-of-band.)
+# See policies/README.md for the full review contract.
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+    # Brefwiz source-available license: used by first-party workspace crates
+    # (quorumauth-edge/origin/org/event-chain/reconcile) and service-kit.
+    "Elastic-2.0",
+    # OSI-approved permissive; transitive via synthez → cucumber-codegen.
+    "BlueOak-1.0.0",
+    # File-level copyleft; used by progenitor (build/dev-dep only) for OpenAPI
+    # client codegen. Generated output is not MPL-encumbered.
+    "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+# Skip license check for first-party private crates pulled from our Gitea
+# registry. `[licenses.private]` alone isn't enough — cargo-deny's
+# `is_private` only fires when the crate's own Cargo.toml has a `publish`
+# field whose alias matches `registries` below. Our internal crates have
+# inconsistent `publish` (mix of "salingue", "brefwiz", and bare), so we
+# also use `ignore-sources` which URL-matches by host+path regardless of
+# the `publish` field.
+#
+# These are all-rights-reserved internal code; licensing is out of scope
+# for dependency policy.
+
+[licenses.private]
+ignore = true
+registries = ["brefwiz", "salingue"]
+ignore-sources = [
+    "https://git.brefwiz.com/api/packages/Brefwiz/cargo/",
+]
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+# First-party internal crates in the Brefwiz registry that lack a `publish`
+# field, so `[licenses.private]` can't match them. `ignore-sources` also
+# doesn't help (cargo-deny trailing-slash bug on sparse registries).
+# Remove these once the upstream crates add `publish = ["brefwiz"]`.
+[[licenses.exceptions]]
+name = "platform-inventory"
+allow = []
+
+[[licenses.exceptions]]
+name = "platform-scheduling"
+allow = []
+
+[[licenses.exceptions]]
+name = "shared-types"
+allow = []
+
+[[licenses.exceptions]]
+name = "llmwiz-core"
+allow = []
+
+# routewiz workspace path crates — all-rights-reserved internal code.
+# LicenseRef-Proprietary is a valid SPDX user-defined ref; not in the global
+# allow list because it is not an open-source identifier.
+[[licenses.exceptions]]
+name = "aiguilleur"
+allow = ["LicenseRef-Proprietary"]
+
+[[licenses.exceptions]]
+name = "lb-core"
+allow = ["LicenseRef-Proprietary"]
+
+[[licenses.exceptions]]
+name = "lb-tower"
+allow = ["LicenseRef-Proprietary"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = [
+    "https://github.com/rust-lang/crates.io-index",
+    "https://git.brefwiz.com/api/packages/Brefwiz/cargo/",
+]
+allow-git = []
+
+[advisories]
+# Central allowlist. Every entry MUST be preceded by `# review-by: YYYY-MM-DD`
+# (+90 days from review). check-policy-expiry.sh fails CI past that date.
+ignore = [
+    # review-by: 2026-07-15
+    { id = "RUSTSEC-2026-0098", reason = "aws-smithy-http-client 1.1.12 rustls 0.21 chain; not linked on AWS endpoint calls. sealwiz#73" },
+    # review-by: 2026-07-15
+    { id = "RUSTSEC-2026-0099", reason = "aws-smithy-http-client 1.1.12 rustls 0.21 chain; not linked on AWS endpoint calls. sealwiz#73" },
+    # review-by: 2026-07-15
+    { id = "RUSTSEC-2023-0071", reason = "rsa Marvin via sqlx-mysql lockfile; postgres-only feature set at runtime" },
+]
