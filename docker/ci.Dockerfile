@@ -78,7 +78,7 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo deny --version \
     && sqlx --version \
     && sccache --version \
-    && cargo zigbuild --version
+    && cargo zigbuild --help > /dev/null
 
 # ── CI-optimised Rust defaults ────────────────────────────────────────────────
 # sccache: RUSTC_WRAPPER is NOT set globally — jobs opt in by setting it to
