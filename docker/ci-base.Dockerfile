@@ -62,10 +62,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # to use Zig as the linker/compiler, replacing the musl.cc toolchain entirely.
 # Zig releases are hosted on GitHub — always reachable from Actions.
 RUN curl -fsSL --retry 5 --retry-delay 5 \
-      "https://github.com/ziglang/zig/releases/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+      "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
       -o /tmp/zig.tar.xz \
     && tar -xJ -C /usr/local/lib -f /tmp/zig.tar.xz \
-    && ln -s "/usr/local/lib/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && ln -s "/usr/local/lib/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig \
     && rm /tmp/zig.tar.xz \
     && zig version
 
