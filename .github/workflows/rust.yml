@@ -109,7 +109,7 @@ jobs:
 
       - name: cargo deny (central)
         if: inputs.use-central-policies
-        run: cargo deny --config .shared-ci-workflows/policies/deny.toml check
+        run: cargo deny check --config .shared-ci-workflows/policies/deny.toml
 
       - name: cargo deny (local)
         if: "!inputs.use-central-policies"
