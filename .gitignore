@@ -1,0 +1,4 @@
+# Local tooling
+.claude/
+.mcp.json
+mempalace.yaml

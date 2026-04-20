@@ -20,10 +20,6 @@ ARG CARGO_DENY_VERSION=0.19.4
 ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
 ARG CARGO_ZIGBUILD_VERSION=0.19.4
-# Pins this ci image to a specific ci-base release (e.g. v1.2.3).
-# Defaults to :latest for CI builds; the release workflow overrides this
-# to the matching ci-base release tag so each ci release is a reproducible
-# stack (ci:v1.2.3 → ci-base:v1.2.3).
 ARG CI_BASE_TAG=latest
 
 FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}

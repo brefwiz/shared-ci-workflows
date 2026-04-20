@@ -1,8 +1,8 @@
 # Central security policies
 
-One place for every brefwiz Rust repo's cargo-deny and cargo-audit config.
-Adding an exception here applies to all 14+ repos at once — and expires on
-a schedule that forces re-review.
+One place for brefwiz Rust repos' cargo-deny and cargo-audit config.
+Adding an exception here applies to all downstream repos at once — and expires
+on a schedule that forces re-review.
 
 ## Files
 
@@ -23,7 +23,7 @@ After expiry, CI fails across every repo until the entry is removed or re-valida
 ## Adding an exception
 
 1. File a ticket describing the advisory, exposure, and mitigation.
-2. Open a PR against `brefwiz/ci-workflows` adding the entry with a 90-day
+2. Open a PR against `brefwiz/shared-ci-workflows` adding the entry with a 90-day
    expiry. Link the ticket in `reason` / comment.
 3. Merge triggers every downstream repo's next CI run to pick it up.
 
@@ -37,5 +37,5 @@ If you can remove the exception instead — do that and close the ticket.
 ## Downstream opt-out
 
 A repo can ship its own `deny.toml` at the repo root and set
-`use-central-policies: false` in its `rust-ci.yml` caller. Use sparingly;
+`use-central-policies: false` in its `rust.yml` caller. Use sparingly;
 every opt-out is drift.

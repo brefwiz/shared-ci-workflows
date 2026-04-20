@@ -15,6 +15,10 @@ on:
         description: Collect LLVM coverage and upload to Codecov
         type: boolean
         default: false
+      run-no-std:
+        description: Run no_std + no_std+alloc checks (requires crate to have an `alloc` feature)
+        type: boolean
+        default: false
       use-central-policies:
         description: Use policies/ from this repo for cargo-audit and cargo-deny
         type: boolean
@@ -23,12 +27,16 @@ on:
         description: Extra flags appended to `cargo nextest run`
         type: string
         default: ""
+      container-image:
+        description: CI container image to use
+        type: string
+        default: ghcr.io/brefwiz/ci:latest
 
 jobs:
   fmt:
     name: Format
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
       - name: cargo fmt
@@ -37,7 +45,7 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
       - name: Clippy (all features)
@@ -48,7 +56,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
       - name: Test (all features)
@@ -59,7 +67,8 @@ jobs:
   no-std:
     name: no_std
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
+    if: inputs.run-no-std
     steps:
       - uses: actions/checkout@v4
       - name: Check (no_std, core only)
@@ -70,7 +79,7 @@ jobs:
   security:
     name: Security (audit + deny)
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -107,7 +116,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    container: ghcr.io/brefwiz/ci:latest
+    container: ${{ inputs.container-image }}
     if: inputs.run-coverage
     steps:
       - uses: actions/checkout@v4
