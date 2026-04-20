@@ -56,7 +56,7 @@ jobs:
         with:
           context: .
           file: docker/ci-base.Dockerfile
-          push: ${{ inputs.push != false }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
           tags: ${{ steps.meta-base.outputs.tags }}
           labels: ${{ steps.meta-base.outputs.labels }}
           cache-from: type=gha,scope=ci-base
@@ -80,7 +80,7 @@ jobs:
           file: docker/ci.Dockerfile
           build-args: |
             CI_BASE_TAG=${{ steps.meta-base.outputs.version }}
-          push: ${{ inputs.push != false }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
           tags: ${{ steps.meta-ci.outputs.tags }}
           labels: ${{ steps.meta-ci.outputs.labels }}
           cache-from: type=gha,scope=ci
