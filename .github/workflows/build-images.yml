@@ -6,6 +6,7 @@ on:
     paths:
       - docker/ci-base.Dockerfile
       - docker/ci.Dockerfile
+      - .github/workflows/build-images.yml
   workflow_dispatch:
     inputs:
       push:
