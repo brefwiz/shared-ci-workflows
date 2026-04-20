@@ -59,17 +59,13 @@ jobs:
           echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "Publishing version ${VERSION}"
 
-      - name: Fetch central scripts
-        uses: actions/checkout@v4
-        with:
-          repository: brefwiz/shared-ci-workflows
-          path: .shared-ci-workflows
-          sparse-checkout: scripts
-
       - name: Extract CHANGELOG section
         id: changelog
         run: |
-          NOTES=$(bash .shared-ci-workflows/scripts/extract-changelog.sh \
+          curl -fsSL \
+            "https://raw.githubusercontent.com/brefwiz/shared-ci-workflows/main/scripts/extract-changelog.sh" \
+            -o /tmp/extract-changelog.sh
+          NOTES=$(bash /tmp/extract-changelog.sh \
             "${{ steps.version.outputs.version }}" \
             "${{ inputs.changelog-path }}")
           if [ -z "$NOTES" ]; then
@@ -86,7 +82,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           for CRATE in ${{ inputs.crates }}; do
             echo "==> Publishing ${CRATE} ${VERSION}"
-            cargo publish -p "${CRATE}" --allow-dirty
+            cargo publish -p "${CRATE}"
 
             # Poll crates.io until the version is indexed (max ~3 min)
             echo "Waiting for ${CRATE} ${VERSION} to appear in crates.io index..."
