@@ -19,17 +19,24 @@ on:
         description: Path to the Cargo.toml that carries the authoritative version
         type: string
         default: Cargo.toml
+    secrets:
+      release-token:
+        description: >
+          PAT with contents:write scope. Must be a PAT (not GITHUB_TOKEN) so that
+          pushing the tag triggers downstream tag-push workflows such as release.yml.
+        required: true
 
 jobs:
   tag:
     name: Tag version
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Use PAT so the push is attributed to a real actor and downstream
+          # workflows (release.yml) are triggered.
+          token: ${{ secrets.release-token }}
 
       - name: Read version from Cargo.toml
         id: version
