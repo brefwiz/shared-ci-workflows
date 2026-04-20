@@ -1,0 +1,112 @@
+name: Release Rust crate(s) (reusable)
+
+# Publishes one or more Rust crates to crates.io in dependency order and
+# creates a GitHub release with the relevant CHANGELOG section.
+#
+# Called by downstream repos on tag push:
+#
+#   on:
+#     push:
+#       tags: ['v*']
+#
+#   jobs:
+#     release:
+#       uses: brefwiz/shared-ci-workflows/.github/workflows/release-rust.yml@main
+#       with:
+#         crates: "api-bones api-bones-tower api-bones-reqwest"
+#       secrets: inherit
+#       permissions:
+#         contents: write
+
+on:
+  workflow_call:
+    inputs:
+      crates:
+        description: >
+          Space-separated list of crate names to publish, in dependency order.
+          Example: "api-bones api-bones-tower api-bones-reqwest"
+        type: string
+        required: true
+      changelog-path:
+        description: Path to CHANGELOG.md
+        type: string
+        default: CHANGELOG.md
+      container-image:
+        description: CI container image (must have cargo + cargo-zigbuild)
+        type: string
+        default: ghcr.io/brefwiz/ci:latest
+    secrets:
+      cargo-registry-token:
+        description: crates.io API token (CARGO_REGISTRY_TOKEN)
+        required: true
+
+jobs:
+  release:
+    name: Publish & release
+    runs-on: ubuntu-latest
+    container: ${{ inputs.container-image }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # GITHUB_REF_NAME is e.g. "v4.0.0" → strip leading "v"
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Publishing version ${VERSION}"
+
+      - name: Fetch central scripts
+        uses: actions/checkout@v4
+        with:
+          repository: brefwiz/shared-ci-workflows
+          path: .shared-ci-workflows
+          sparse-checkout: scripts
+
+      - name: Extract CHANGELOG section
+        id: changelog
+        run: |
+          NOTES=$(bash .shared-ci-workflows/scripts/extract-changelog.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ inputs.changelog-path }}")
+          if [ -z "$NOTES" ]; then
+            NOTES="See CHANGELOG.md for details."
+          fi
+          # Write to file — avoids shell-quoting issues with multiline strings
+          echo "${NOTES}" > /tmp/release-notes.md
+          echo "Release notes written."
+
+      - name: Publish crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.cargo-registry-token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for CRATE in ${{ inputs.crates }}; do
+            echo "==> Publishing ${CRATE} ${VERSION}"
+            cargo publish -p "${CRATE}"
+
+            # Poll crates.io until the version is indexed (max ~3 min)
+            echo "Waiting for ${CRATE} ${VERSION} to appear in crates.io index..."
+            for i in $(seq 1 18); do
+              sleep 10
+              if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${VERSION}" \
+                   -H "User-Agent: brefwiz-ci/1.0" \
+                 | grep -q '"num"'; then
+                echo "${CRATE} ${VERSION} indexed after $((i * 10))s."
+                break
+              fi
+              echo "  attempt ${i}/18…"
+            done
+          done
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Release ${{ steps.version.outputs.tag }}" \
+            --notes-file /tmp/release-notes.md \
+            --verify-tag

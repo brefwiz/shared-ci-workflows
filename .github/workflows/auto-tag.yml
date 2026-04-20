@@ -1,0 +1,59 @@
+name: Auto-tag on merge (reusable)
+
+# Reads the version from Cargo.toml on every push to main and creates a
+# vX.Y.Z git tag if one does not already exist.  Downstream repos call this
+# once; the resulting tag then triggers their release workflow.
+#
+# Called by downstream repos:
+#
+#   jobs:
+#     tag:
+#       uses: brefwiz/shared-ci-workflows/.github/workflows/auto-tag.yml@main
+#       permissions:
+#         contents: write
+
+on:
+  workflow_call:
+    inputs:
+      cargo-toml-path:
+        description: Path to the Cargo.toml that carries the authoritative version
+        type: string
+        default: Cargo.toml
+
+jobs:
+  tag:
+    name: Tag version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^version' "${{ inputs.cargo-toml-path }}" \
+            | sed 's/.*= *"\(.*\)"/\1/')
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: v${VERSION}"
+
+      - name: Check whether tag already exists
+        id: tag_check
+        run: |
+          if git tag --list "${{ steps.version.outputs.version }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.version }} already exists — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+          echo "Pushed tag ${{ steps.version.outputs.version }}"
