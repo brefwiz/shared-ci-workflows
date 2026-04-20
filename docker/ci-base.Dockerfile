@@ -2,7 +2,7 @@
 # ========================
 # System tools shared by all CI jobs. Intentionally excludes Rust.
 # Rebuild this layer when: Node, Java, openapi-generator, kubectl,
-# helm, helmfile, k3d, nats, or redocly versions change.
+# helm, helmfile, k3d, nats, redocly, or Zig versions change.
 #
 # Included tooling:
 #   - Node.js (LTS)
@@ -14,8 +14,10 @@
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
+#   - Zig (used by cargo-zigbuild for reliable musl cross-compilation)
 
 ARG NODE_MAJOR=24
+ARG ZIG_VERSION=0.14.0
 ARG OPENAPI_GENERATOR_VERSION=7.12.0
 ARG KUBECTL_VERSION=1.35.2
 ARG HELM_VERSION=4.1.3
@@ -25,6 +27,7 @@ ARG NATS_VERSION=2.12.5
 FROM debian:trixie-slim
 
 ARG NODE_MAJOR
+ARG ZIG_VERSION
 ARG OPENAPI_GENERATOR_VERSION
 ARG KUBECTL_VERSION
 ARG HELM_VERSION
@@ -36,9 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials (needed by Rust layer and native Node modules)
     build-essential mold clang \
     pkg-config libssl-dev libpq-dev \
-    # musl C toolchains — required by crates with C deps (e.g. zstd-sys, aws-lc-sys) targeting musl
+    # musl C toolchains
     # musl-tools: provides musl-gcc for x86_64-unknown-linux-musl
-    # gcc-aarch64-linux-gnu: retained for binutils (aarch64-linux-gnu-objcopy etc.)
+    # gcc-aarch64-linux-gnu: binutils only (objcopy etc.); Zig handles aarch64 musl C compilation
     musl-tools gcc-aarch64-linux-gnu \
     # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
     protobuf-compiler libprotobuf-dev \
@@ -52,23 +55,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang-go \
     && rm -rf /var/lib/apt/lists/*
 
-# ── aarch64-linux-musl cross-toolchain (musl.cc) ──────────────────────────────
-# gcc-aarch64-linux-gnu targets glibc — it lacks musl headers, so crates with C deps
-# (aws-lc-sys, zstd-sys, etc.) fail with "sys/types.h: No such file or directory".
-# musl.cc ships a self-contained cross-compiler with musl headers baked in.
-RUN set -e; \
-    for i in 1 2 3; do \
-      curl -fsSL --retry 3 --retry-delay 5 \
-        "https://musl.cc/aarch64-linux-musl-cross.tgz" \
-        -o /tmp/aarch64-musl.tgz && break; \
-      echo "Download attempt $i failed, retrying..."; sleep 10; \
-    done \
-    && tar -xz -C /opt -f /tmp/aarch64-musl.tgz \
-    && rm /tmp/aarch64-musl.tgz \
-    && for bin in /opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl-*; do \
-         ln -s "$bin" "/usr/local/bin/$(basename "$bin")"; \
-       done \
-    && aarch64-linux-musl-gcc --version
+# ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
+# musl.cc is unreliable from GitHub Actions runners. Zig ships its own libc
+# headers (including musl) and acts as a drop-in C cross-compiler for any
+# target triple. cargo-zigbuild (installed in the ci layer) wraps cargo build
+# to use Zig as the linker/compiler, replacing the musl.cc toolchain entirely.
+# Zig releases are hosted on GitHub — always reachable from Actions.
+RUN curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/ziglang/zig/releases/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+      -o /tmp/zig.tar.xz \
+    && tar -xJ -C /usr/local/lib -f /tmp/zig.tar.xz \
+    && ln -s "/usr/local/lib/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && rm /tmp/zig.tar.xz \
+    && zig version
 
 # ── Node.js (via NodeSource) ───────────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \

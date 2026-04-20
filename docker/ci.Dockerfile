@@ -1,4 +1,4 @@
-# ci — Full CI Image (rebuilt 2026-04-13)
+# ci — Full CI Image
 # ===================
 # Extends ci-base with the Rust toolchain and cargo tools.
 # Rebuild this layer when: Rust version or cargo tool versions change.
@@ -9,6 +9,7 @@
 #   - Rust stable (rustfmt, clippy, llvm-tools-preview)
 #   - Fast linker: mold + clang (already in base, wired up here)
 #   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli
+#   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
 
 ARG RUST_VERSION=1.94
 ARG CARGO_NEXTEST_VERSION=0.9.114
@@ -18,6 +19,7 @@ ARG SQLX_CLI_VERSION=0.8.6
 ARG CARGO_DENY_VERSION=0.19.4
 ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
+ARG CARGO_ZIGBUILD_VERSION=0.19.4
 # Pins this ci image to a specific ci-base release (e.g. v1.2.3).
 # Defaults to :latest for CI builds; the release workflow overrides this
 # to the matching ci-base release tag so each ci release is a reproducible
@@ -34,6 +36,7 @@ ARG SQLX_CLI_VERSION
 ARG CARGO_DENY_VERSION
 ARG CARGO_HACK_VERSION
 ARG SCCACHE_VERSION
+ARG CARGO_ZIGBUILD_VERSION
 
 # ── Rust toolchain ─────────────────────────────────────────────────────────────
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -65,6 +68,7 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
         --features native-tls,postgres \
         --locked \
     && cargo install sccache --version ${SCCACHE_VERSION} --locked \
+    && cargo install cargo-zigbuild --version ${CARGO_ZIGBUILD_VERSION} --locked \
     && rm -rf ${CARGO_HOME}/registry/cache \
     && cargo nextest --version \
     && cargo llvm-cov --version \
@@ -73,7 +77,8 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo audit --version \
     && cargo deny --version \
     && sqlx --version \
-    && sccache --version
+    && sccache --version \
+    && cargo zigbuild --version
 
 # ── CI-optimised Rust defaults ────────────────────────────────────────────────
 # sccache: RUSTC_WRAPPER is NOT set globally — jobs opt in by setting it to
@@ -82,6 +87,7 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
 ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0 \
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     RUST_BACKTRACE=1 \
     SQLX_OFFLINE=true \
