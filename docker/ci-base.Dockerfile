@@ -56,8 +56,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # gcc-aarch64-linux-gnu targets glibc — it lacks musl headers, so crates with C deps
 # (aws-lc-sys, zstd-sys, etc.) fail with "sys/types.h: No such file or directory".
 # musl.cc ships a self-contained cross-compiler with musl headers baked in.
-RUN curl -fsSL "https://musl.cc/aarch64-linux-musl-cross.tgz" \
-    | tar -xz -C /opt \
+RUN set -e; \
+    for i in 1 2 3; do \
+      curl -fsSL --retry 3 --retry-delay 5 \
+        "https://musl.cc/aarch64-linux-musl-cross.tgz" \
+        -o /tmp/aarch64-musl.tgz && break; \
+      echo "Download attempt $i failed, retrying..."; sleep 10; \
+    done \
+    && tar -xz -C /opt -f /tmp/aarch64-musl.tgz \
+    && rm /tmp/aarch64-musl.tgz \
     && for bin in /opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl-*; do \
          ln -s "$bin" "/usr/local/bin/$(basename "$bin")"; \
        done \
