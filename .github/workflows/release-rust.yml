@@ -63,13 +63,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: brefwiz/shared-ci-workflows
-          path: .shared-ci-workflows
+          path: /tmp/shared-ci-workflows
           sparse-checkout: scripts
 
       - name: Extract CHANGELOG section
         id: changelog
         run: |
-          NOTES=$(bash .shared-ci-workflows/scripts/extract-changelog.sh \
+          NOTES=$(bash /tmp/shared-ci-workflows/scripts/extract-changelog.sh \
             "${{ steps.version.outputs.version }}" \
             "${{ inputs.changelog-path }}")
           if [ -z "$NOTES" ]; then
