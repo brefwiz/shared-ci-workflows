@@ -102,7 +102,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "Release ${{ steps.version.outputs.tag }}" \
-            --notes-file /tmp/release-notes.md \
-            --verify-tag
+          NOTES=$(cat /tmp/release-notes.md)
+          curl -fsSL \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "$(jq -n \
+              --arg tag "${{ steps.version.outputs.tag }}" \
+              --arg name "Release ${{ steps.version.outputs.tag }}" \
+              --arg body "${NOTES}" \
+              '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')"
