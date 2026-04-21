@@ -19,4 +19,10 @@ ignore = [
     # No upstream fix yet.
     # review-by: 2026-07-15
     "RUSTSEC-2023-0071",
+    # rand soundness issue: UB when a custom logger calls rand::rng() during ThreadRng reseed.
+    # Pulled in via sqlx-postgres 0.8 → rand 0.8. No patched 0.8.x; fix is in rand ≥ 0.9.3.
+    # Requires: custom logger + log feature + trace/warn logging + reseed path — not met here.
+    # Remove once sqlx upgrades to rand 0.9.
+    # review-by: 2026-07-20
+    "RUSTSEC-2026-0097",
 ]
