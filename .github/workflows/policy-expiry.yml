@@ -1,0 +1,30 @@
+name: Policy expiry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - policies/**
+      - scripts/check-policy-expiry.sh
+      - .github/workflows/policy-expiry.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - policies/**
+      - scripts/check-policy-expiry.sh
+      - .github/workflows/policy-expiry.yml
+  schedule:
+    - cron: "0 6 * * *"   # daily at 06:00 UTC
+
+permissions: {}
+
+jobs:
+  check:
+    name: Check policy review-by dates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check policy expiry
+        run: bash scripts/check-policy-expiry.sh policies/audit.toml policies/deny.toml
