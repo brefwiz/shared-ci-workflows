@@ -52,4 +52,6 @@ ignore = [
     { id = "RUSTSEC-2026-0099", reason = "aws-smithy-http-client 1.1.12 rustls 0.21 chain; not linked on AWS endpoint calls" },
     # review-by: 2026-07-15
     { id = "RUSTSEC-2023-0071", reason = "rsa Marvin via sqlx-mysql lockfile; postgres-only feature set at runtime" },
+    # review-by: 2026-07-20
+    { id = "RUSTSEC-2026-0097", reason = "rand unsound aliased-mut-ref via sqlx-postgres 0.8.x; fix requires rand >= 0.9.3 not yet released by sqlx 0.8.x; UB conditions extremely narrow (custom logger + trace + ThreadRng reseed)" },
 ]
