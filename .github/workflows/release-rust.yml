@@ -81,6 +81,14 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           for CRATE in ${{ inputs.crates }}; do
+            # Skip if this exact version is already indexed on crates.io
+            if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${VERSION}" \
+                 -H "User-Agent: brefwiz-ci/1.0" \
+               | grep -q '"num"'; then
+              echo "==> Skipping ${CRATE} ${VERSION} (already on crates.io)"
+              continue
+            fi
+
             echo "==> Publishing ${CRATE} ${VERSION}"
             cargo publish -p "${CRATE}"
 
