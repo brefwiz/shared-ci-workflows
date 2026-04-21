@@ -79,27 +79,33 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.cargo-registry-token }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           for CRATE in ${{ inputs.crates }}; do
+            # Read the crate's actual version — subcrates may have a different
+            # version scheme than the workspace root (e.g. api-bones-tower 2.x
+            # while api-bones is 4.x).
+            CRATE_VERSION=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$CRATE" \
+                '.packages[] | select(.name == $name) | .version')
+
             # Skip if this exact version is already indexed on crates.io
-            if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${VERSION}" \
+            if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${CRATE_VERSION}" \
                  -H "User-Agent: brefwiz-ci/1.0" \
                | grep -q '"num"'; then
-              echo "==> Skipping ${CRATE} ${VERSION} (already on crates.io)"
+              echo "==> Skipping ${CRATE} ${CRATE_VERSION} (already on crates.io)"
               continue
             fi
 
-            echo "==> Publishing ${CRATE} ${VERSION}"
+            echo "==> Publishing ${CRATE} ${CRATE_VERSION}"
             cargo publish -p "${CRATE}"
 
             # Poll crates.io until the version is indexed (max ~3 min)
-            echo "Waiting for ${CRATE} ${VERSION} to appear in crates.io index..."
+            echo "Waiting for ${CRATE} ${CRATE_VERSION} to appear in crates.io index..."
             for i in $(seq 1 18); do
               sleep 10
-              if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${VERSION}" \
+              if curl -sf "https://crates.io/api/v1/crates/${CRATE}/${CRATE_VERSION}" \
                    -H "User-Agent: brefwiz-ci/1.0" \
                  | grep -q '"num"'; then
-                echo "${CRATE} ${VERSION} indexed after $((i * 10))s."
+                echo "${CRATE} ${CRATE_VERSION} indexed after $((i * 10))s."
                 break
               fi
               echo "  attempt ${i}/18…"
