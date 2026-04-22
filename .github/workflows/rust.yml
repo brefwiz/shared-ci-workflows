@@ -99,6 +99,13 @@ jobs:
               .shared-ci-workflows/policies/audit.toml
               .shared-ci-workflows/policies/deny.toml
 
+      - name: Validate central policy mapping
+        if: inputs.use-central-policies
+        run: cargo-vuln-policy-validator
+             .shared-ci-workflows/policies/audit.toml
+             .shared-ci-workflows/policies/deny.toml
+             .shared-ci-workflows/policies/exceptions.yaml
+
       - name: cargo audit (central)
         if: inputs.use-central-policies
         run: cargo audit --file .shared-ci-workflows/policies/audit.toml

@@ -10,6 +10,7 @@
 #   - Fast linker: mold + clang (already in base, wired up here)
 #   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli
 #   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
+#   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
 
 ARG RUST_VERSION=1.94
 ARG CARGO_NEXTEST_VERSION=0.9.114
@@ -20,6 +21,8 @@ ARG CARGO_DENY_VERSION=0.19.4
 ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
 ARG CARGO_ZIGBUILD_VERSION=0.19.4
+ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
+ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
 
 FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}
@@ -33,6 +36,8 @@ ARG CARGO_DENY_VERSION
 ARG CARGO_HACK_VERSION
 ARG SCCACHE_VERSION
 ARG CARGO_ZIGBUILD_VERSION
+ARG CARGO_VULN_POLICY_VALIDATOR_REPO
+ARG CARGO_VULN_POLICY_VALIDATOR_REF
 
 # ── Rust toolchain ─────────────────────────────────────────────────────────────
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -58,6 +63,10 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo install cargo-hack --version ${CARGO_HACK_VERSION} --locked \
     && cargo install cargo-audit --locked \
     && cargo install cargo-deny --version ${CARGO_DENY_VERSION} --locked \
+    && cargo install cargo-vuln-policy-validator \
+        --git ${CARGO_VULN_POLICY_VALIDATOR_REPO} \
+        --branch ${CARGO_VULN_POLICY_VALIDATOR_REF} \
+        --locked \
     && cargo install sqlx-cli \
         --version ${SQLX_CLI_VERSION} \
         --no-default-features \
@@ -72,6 +81,7 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo hack --version \
     && cargo audit --version \
     && cargo deny --version \
+    && cargo-vuln-policy-validator --help > /dev/null \
     && sqlx --version \
     && sccache --version \
     && cargo zigbuild --help > /dev/null
@@ -96,5 +106,5 @@ RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci" \
-      org.opencontainers.image.description="Full CI image — ci-base + Rust toolchain + cargo tools" \
+      org.opencontainers.image.description="Full CI image — ci-base + Rust toolchain + cargo tools + policy validator" \
       org.opencontainers.image.source="https://github.com/brefwiz/shared-ci-workflows"

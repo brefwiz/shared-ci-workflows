@@ -48,15 +48,18 @@ touches a Dockerfile:
 | Image | Based on | Contents |
 |---|---|---|
 | `ghcr.io/brefwiz/ci-base:latest` | `debian:trixie-slim` | Node, Java, openapi-generator, kubectl, helm, helmfile, k3d, nats, Docker CLI, Zig |
-| `ghcr.io/brefwiz/ci:latest` | `ci-base` | + Rust stable, cargo-nextest, llvm-cov, cargo-audit, cargo-deny, cargo-hack, cargo-chef, sqlx-cli, sccache, cargo-zigbuild |
+| `ghcr.io/brefwiz/ci:latest` | `ci-base` | + Rust stable, cargo-nextest, llvm-cov, cargo-audit, cargo-deny, cargo-hack, cargo-chef, sqlx-cli, sccache, cargo-zigbuild, cargo-vuln-policy-validator |
 
 Tags: `latest` (main branch) and `sha-<short>` (per-commit).
 
 ## Central security policies
 
-`policies/deny.toml` and `policies/audit.toml` are the central cargo-deny and
-cargo-audit configs. Every advisory allowlist entry carries a `# review-by: YYYY-MM-DD`
-comment; `scripts/check-policy-expiry.sh` fails CI once the date passes.
+`policies/deny.toml`, `policies/audit.toml`, and `policies/exceptions.yaml`
+form the central cargo-deny / cargo-audit / exception-review contract. Every
+advisory allowlist entry carries a `# review-by: YYYY-MM-DD` comment;
+`scripts/check-policy-expiry.sh` fails CI once the date passes, and
+`cargo-vuln-policy-validator` checks that the TOML ignore lists match the YAML
+exceptions file.
 
 See [`policies/README.md`](policies/README.md) for the full review contract.
 
