@@ -5,7 +5,7 @@
 # expiry field, so we enforce it here. Every ignored RUSTSEC id in either file
 # must be preceded by `# review-by: YYYY-MM-DD` (within 3 lines above). CI
 # fails when any is past due; entries within 30 days of expiry warn (nonfatal).
-
+#!/usr/bin/env bash
 set -euo pipefail
 
 AUDIT="${1:-policies/audit.toml}"
@@ -21,102 +21,96 @@ today_epoch=$(date -u -d "$TODAY" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$TO
 FAIL=0
 WARN=0
 
-# Extract "STATUS<TAB>ID<TAB>REVIEW_DATE" lines from audit.toml via awk.
-ENTRIES=$(awk '
-  /# *review-by: *[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
-    match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2}/);
-    last_review = substr($0, RSTART, RLENGTH); last_line = NR;
-  }
-  /"RUSTSEC-[0-9]{4}-[0-9]+"/ {
-    match($0, /RUSTSEC-[0-9]{4}-[0-9]+/);
-    id = substr($0, RSTART, RLENGTH);
-    if (last_review == "" || NR - last_line > 3) {
-      print "MISSING\t" id "\t";
-    } else {
-      print "OK\t" id "\t" last_review;
+check_entries() {
+  local file="$1"
+  local mode="$2"
+
+  awk '
+    function reset_meta() {
+      review=""; reason=""; risk=""; impact=""; tracking=""; owner="";
+      last_line=0;
     }
-  }
-' "$AUDIT")
+
+    BEGIN { reset_meta() }
+
+    {
+      if ($0 ~ /# *review-by: *[0-9]{4}-[0-9]{2}-[0-9]{2}/) {
+        match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2}/);
+        review = substr($0, RSTART, RLENGTH); last_line = NR;
+      }
+      if ($0 ~ /# *reason:/)   { reason=1; last_line=NR }
+      if ($0 ~ /# *risk:/)     { risk=1; last_line=NR }
+      if ($0 ~ /# *impact:/)   { impact=1; last_line=NR }
+      if ($0 ~ /# *tracking:/) { tracking=1; last_line=NR }
+      if ($0 ~ /# *owner:/)    { owner=1; last_line=NR }
+
+      if ($0 ~ /RUSTSEC-[0-9]{4}-[0-9]+/) {
+        match($0, /RUSTSEC-[0-9]{4}-[0-9]+/);
+        id = substr($0, RSTART, RLENGTH);
+
+        missing=""
+        if (review == "" || NR - last_line > 5) missing = missing " review-by"
+        if (!reason)   missing = missing " reason"
+        if (!risk)     missing = missing " risk"
+        if (!impact)   missing = missing " impact"
+        if (!tracking) missing = missing " tracking"
+        if (!owner)    missing = missing " owner"
+
+        if (missing != "") {
+          print "MISSING\t" id "\t" review "\t" missing
+        } else {
+          print "OK\t" id "\t" review "\t"
+        }
+
+        reset_meta()
+      }
+    }
+  ' "$file"
+}
+
+process_results() {
+  local entries="$1"
+
+  while IFS=$'\t' read -r status id review missing; do
+    [[ -z "$status" ]] && continue
+
+    case "$status" in
+      MISSING)
+        echo "  ✗ $id — missing fields:$missing"
+        FAIL=1
+        ;;
+      OK)
+        rev_epoch=$(date -u -d "$review" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$review" +%s)
+        delta=$(( rev_epoch - today_epoch ))
+
+        if (( delta < 0 )); then
+          echo "  ✗ $id — review-by $review is PAST DUE"
+          FAIL=1
+        elif (( delta < WARN_SEC )); then
+          days=$(( delta / 86400 ))
+          echo "  ⚠ $id — review-by $review (expires in ${days}d)"
+          WARN=1
+        else
+          echo "  ✓ $id — review-by $review"
+        fi
+        ;;
+    esac
+  done < <(printf '%s\n' "$entries")
+}
 
 echo "==> Checking $AUDIT..."
-if [[ -z "$ENTRIES" ]]; then
-  echo "  (no RUSTSEC ignore entries)"
-fi
-while IFS=$'\t' read -r status id review; do
-  [[ -z "$status" ]] && continue
-  case "$status" in
-    MISSING)
-      echo "  ✗ $id — no '# review-by: YYYY-MM-DD' within 3 lines above"
-      FAIL=1
-      ;;
-    OK)
-      rev_epoch=$(date -u -d "$review" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$review" +%s)
-      delta=$(( rev_epoch - today_epoch ))
-      if (( delta < 0 )); then
-        echo "  ✗ $id — review-by $review is PAST DUE (re-review, bump +90d, or remove)"
-        FAIL=1
-      elif (( delta < WARN_SEC )); then
-        days=$(( delta / 86400 ))
-        echo "  ⚠ $id — review-by $review (expires in ${days}d)"
-        WARN=1
-      else
-        echo "  ✓ $id — review-by $review"
-      fi
-      ;;
-  esac
-done < <(printf '%s\n' "$ENTRIES")
+AUDIT_ENTRIES=$(check_entries "$AUDIT" "audit")
+[[ -z "$AUDIT_ENTRIES" ]] && echo "  (no RUSTSEC ignore entries)"
+process_results "$AUDIT_ENTRIES"
 
-# deny.toml: same contract as audit.toml — every [advisories.ignore] entry
-# must be preceded by `# review-by: YYYY-MM-DD` within 3 lines.
 echo "==> Checking $DENY..."
-DENY_ENTRIES=$(awk '
-  /^\[advisories\]/ {in_adv=1; next}
-  /^\[/ && !/advisories/ {in_adv=0}
-  /# *review-by: *[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
-    match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2}/);
-    last_review = substr($0, RSTART, RLENGTH); last_line = NR;
-  }
-  in_adv && /id *= *"RUSTSEC-/ {
-    match($0, /RUSTSEC-[0-9]{4}-[0-9]+/);
-    id = substr($0, RSTART, RLENGTH);
-    if (last_review == "" || NR - last_line > 3) {
-      print "MISSING\t" id "\t";
-    } else {
-      print "OK\t" id "\t" last_review;
-    }
-  }
-' "$DENY")
-
-if [[ -z "$DENY_ENTRIES" ]]; then
-  echo "  (no RUSTSEC ignore entries)"
-fi
-while IFS=$'\t' read -r status id review; do
-  [[ -z "$status" ]] && continue
-  case "$status" in
-    MISSING)
-      echo "  ✗ $id — no '# review-by: YYYY-MM-DD' within 3 lines above"
-      FAIL=1
-      ;;
-    OK)
-      rev_epoch=$(date -u -d "$review" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$review" +%s)
-      delta=$(( rev_epoch - today_epoch ))
-      if (( delta < 0 )); then
-        echo "  ✗ $id — review-by $review is PAST DUE (re-review, bump +90d, or remove)"
-        FAIL=1
-      elif (( delta < WARN_SEC )); then
-        days=$(( delta / 86400 ))
-        echo "  ⚠ $id — review-by $review (expires in ${days}d)"
-        WARN=1
-      else
-        echo "  ✓ $id — review-by $review"
-      fi
-      ;;
-  esac
-done < <(printf '%s\n' "$DENY_ENTRIES")
+DENY_ENTRIES=$(check_entries "$DENY" "deny")
+[[ -z "$DENY_ENTRIES" ]] && echo "  (no RUSTSEC ignore entries)"
+process_results "$DENY_ENTRIES"
 
 if [[ "$FAIL" != "0" ]]; then
   echo ""
-  echo "FAIL: policy review contract violated. See policies/README.md."
+  echo "FAIL: policy review contract violated."
   exit 1
 fi
 
