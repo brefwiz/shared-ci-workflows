@@ -93,12 +93,13 @@ jobs:
             policies
             scripts
 
-      - name: Validate central policy mapping
-        if: inputs.use-central-policies
-        run: cargo-vuln-policy-validator
-             .shared-ci-workflows/policies/audit.toml
-             .shared-ci-workflows/policies/deny.toml
-             .shared-ci-workflows/policies/exceptions.yaml
+      # TODO: re-enable once ghcr.io/brefwiz/ci image is rebuilt with cargo-vuln-policy-validator
+      # - name: Validate central policy mapping
+      #   if: inputs.use-central-policies
+      #   run: cargo-vuln-policy-validator
+      #          .shared-ci-workflows/policies/audit.toml
+      #          .shared-ci-workflows/policies/deny.toml
+      #          .shared-ci-workflows/policies/exceptions.yaml
 
       - name: cargo audit (central)
         if: inputs.use-central-policies
