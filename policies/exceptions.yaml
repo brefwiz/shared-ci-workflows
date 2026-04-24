@@ -1,0 +1,47 @@
+
+exceptions:
+  - id: "RUSTSEC-2026-0098"
+    review_by: 2026-07-15
+    owner: platform-security
+    reason: Transitive rustls 0.21 dependency via aws-smithy-http-client 1.1.12; not used in AWS endpoint call paths
+    risk: Low (dependency present but codepath not exercised in production workloads)
+    impact: Potential DoS if malicious TLS input reaches unused client path
+    tracking: https://github.com/smithy-lang/smithy-rs/issues
+    resolution: awn-smithy needs to be bumped up with the rustls fix
+
+  - id: "RUSTSEC-2026-0099" 
+    review_by: 2026-07-15
+    owner: platform-security
+    reason: Same dependency chain as RUSTSEC-2026-0098 (aws-smithy-http-client 1.1.12 transitively pulls vulnerable rustls 0.21)
+    risk: Low (shared upstream root cause; identical reachability assumptions)
+    impact: DoS only if CRL/TLS parsing path is triggered
+    tracking: https://github.com/smithy-lang/smithy-rs/issues
+    resolution: awn-smithy needs to be bumped up with the rustls fix
+    
+  - id: "RUSTSEC-2023-0071"
+    review_by: 2026-07-15
+    owner: backend-data
+    reason: Transitive RSA dependency via sqlx-mysql feature set present in lockfile; mysql feature not enabled at runtime
+    risk: Very low (feature-gated codepath not compiled in production binary)
+    impact: Theoretical crypto misuse if feature flags changed unexpectedly
+    tracking: https://github.com/RustCrypto/RSA/issues
+    resolution: sqlx-myself needs to be upgraded with the fix
+    
+  - id: "RUSTSEC-2026-0097"
+    review_by: 2026-07-20
+    owner: backend-data
+    reason: rand 0.8.x chain via sqlx-postgres; upstream fix requires rand >= 0.9.3 not yet adopted by sqlx 0.8.x
+    risk: Medium theoretical UB requires highly specific conditions (custom logger + tracing + ThreadRng reseed interaction)
+    impact: Undefined behavior leading to potential memory corruption in extremely narrow execution path
+    tracking: https://github.com/rust-lang/rand/issues
+    resolution: sqlx needs to be upgraded with the fix
+
+  - id: "RUSTSEC-2026-0104"
+    review_by: 2026-07-22
+    owner: platform-security
+    reason: rustls-webpki 0.103.12 reachable panic in CRL parsing; pulled in via service-kit 2.0.0 → reqwest → rustls-platform-verifier 0.6.2
+    risk: Low (CRL parsing only triggered when connecting to a server that sends a malformed CRL; not in any hot path)
+    impact: DoS via reachable panic if attacker controls TLS server response
+    tracking: https://rustsec.org/advisories/RUSTSEC-2026-0104
+    resolution: Remove once service-kit ships with rustls-webpki >=0.103.13
+

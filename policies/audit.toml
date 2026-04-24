@@ -25,4 +25,10 @@ ignore = [
     # Remove once sqlx upgrades to rand 0.9.
     # review-by: 2026-07-20
     "RUSTSEC-2026-0097",
+    # rustls-webpki 0.103.12 reachable panic in CRL parsing (DoS).
+    # Pulled in via service-kit 2.0.0 → reqwest → rustls-platform-verifier 0.6.2.
+    # Fix requires rustls-webpki >=0.103.13; blocked on service-kit upgrade.
+    # Remove once service-kit ships with updated rustls-webpki.
+    # review-by: 2026-07-22
+    "RUSTSEC-2026-0104",
 ]
