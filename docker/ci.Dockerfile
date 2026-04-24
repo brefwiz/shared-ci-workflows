@@ -78,7 +78,6 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo install cargo-zigbuild --version ${CARGO_ZIGBUILD_VERSION} --locked \
     && cargo install api-bones-sdk-gen \
         --version ${API_BONES_SDK_GEN_VERSION} \
-        --registry brefwiz \
         --locked \
     && mkdir -p /opt/brefwiz \
     && api-bones-sdk-gen makefile > /opt/brefwiz/api-bones-sdk.mk \
