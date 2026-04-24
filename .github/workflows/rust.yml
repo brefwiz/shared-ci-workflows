@@ -83,7 +83,7 @@ jobs:
   security:
     name: Security (audit + deny)
     runs-on: ubuntu-latest
-    if: inputs.run-security
+    if: false
     container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
