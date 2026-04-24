@@ -81,7 +81,11 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && cargo hack --version \
     && cargo audit --version \
     && cargo deny --version \
-    && cargo-vuln-policy-validator --help > /dev/null \
+    && printf '[advisories]\nignore = ["RUSTSEC-0000-0000"]\n' > /tmp/smoke-audit.toml \
+    && printf '[advisories]\nignore = []\n' > /tmp/smoke-deny.toml \
+    && printf 'exceptions:\n  - id: RUSTSEC-0000-0000\n    owner: smoke-test\n    review_by: 2099-01-01\n    reason: smoke test\n    risk: known\n    impact: low\n    tracking: NONE\n    resolution: none\n' > /tmp/smoke-exceptions.yaml \
+    && cargo-vuln-policy-validator /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
+    && rm /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
     && sqlx --version \
     && sccache --version \
     && cargo zigbuild --help > /dev/null
