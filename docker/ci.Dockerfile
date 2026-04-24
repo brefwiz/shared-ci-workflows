@@ -105,7 +105,6 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
 ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0 \
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang \
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     RUST_BACKTRACE=1 \
     SQLX_OFFLINE=true \
