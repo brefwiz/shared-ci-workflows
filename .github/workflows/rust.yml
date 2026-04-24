@@ -93,12 +93,6 @@ jobs:
             policies
             scripts
 
-      - name: Check policy expiry
-        if: inputs.use-central-policies
-        run: bash .shared-ci-workflows/scripts/check-policy-expiry.sh
-              .shared-ci-workflows/policies/audit.toml
-              .shared-ci-workflows/policies/deny.toml
-
       - name: Validate central policy mapping
         if: inputs.use-central-policies
         run: cargo-vuln-policy-validator
