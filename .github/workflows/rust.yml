@@ -19,6 +19,10 @@ on:
         description: Run no_std + no_std+alloc checks (requires crate to have an `alloc` feature)
         type: boolean
         default: false
+      run-security:
+        description: Run the security audit + deny job
+        type: boolean
+        default: true
       use-central-policies:
         description: Use policies/ from this repo for cargo-audit and cargo-deny
         type: boolean
@@ -79,6 +83,7 @@ jobs:
   security:
     name: Security (audit + deny)
     runs-on: ubuntu-latest
+    if: inputs.run-security
     container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
