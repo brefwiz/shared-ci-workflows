@@ -13,6 +13,7 @@
 #   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
 
 ARG RUST_VERSION=1.94
+ARG API_BONES_SDK_GEN_VERSION=0.1.0
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
 ARG CARGO_CHEF_VERSION=0.1.77
@@ -38,6 +39,7 @@ ARG SCCACHE_VERSION
 ARG CARGO_ZIGBUILD_VERSION
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO
 ARG CARGO_VULN_POLICY_VALIDATOR_REF
+ARG API_BONES_SDK_GEN_VERSION
 
 # ── Rust toolchain ─────────────────────────────────────────────────────────────
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -74,6 +76,12 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
         --locked \
     && cargo install sccache --version ${SCCACHE_VERSION} --locked \
     && cargo install cargo-zigbuild --version ${CARGO_ZIGBUILD_VERSION} --locked \
+    && cargo install api-bones-sdk-gen \
+        --version ${API_BONES_SDK_GEN_VERSION} \
+        --registry brefwiz \
+        --locked \
+    && mkdir -p /opt/brefwiz \
+    && api-bones-sdk-gen makefile > /opt/brefwiz/api-bones-sdk.mk \
     && rm -rf ${CARGO_HOME}/registry/cache \
     && cargo nextest --version \
     && cargo llvm-cov --version \
@@ -88,7 +96,8 @@ RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
     && rm /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
     && sqlx --version \
     && sccache --version \
-    && cargo zigbuild --help > /dev/null
+    && cargo zigbuild --help > /dev/null \
+    && api-bones-sdk-gen --version
 
 # ── CI-optimised Rust defaults ────────────────────────────────────────────────
 # sccache: RUSTC_WRAPPER is NOT set globally — jobs opt in by setting it to

@@ -1,0 +1,98 @@
+name: Release npm package(s) (reusable)
+
+# Publishes one or more npm packages to GitHub Packages and optionally
+# mirrors to npmjs.com.  Called by downstream repos on tag push.
+#
+# Usage:
+#
+#   on:
+#     push:
+#       tags: ['v*']
+#
+#   jobs:
+#     publish-npm:
+#       uses: brefwiz/shared-ci-workflows/.github/workflows/release-npm.yml@main
+#       with:
+#         packages: "api-bones-axios"
+#       permissions:
+#         contents: read
+#         packages: write
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: >
+          Space-separated list of package directory names (relative to repo
+          root) to publish.  Example: "api-bones-axios"
+        type: string
+        required: true
+      node-version:
+        description: Node.js version to use
+        type: string
+        default: "22"
+      mirror-npmjs:
+        description: >
+          Also publish to npmjs.com.  Requires the npm-token secret.
+        type: boolean
+        default: false
+    secrets:
+      npm-token:
+        description: npmjs.com token (required only when mirror-npmjs is true)
+        required: false
+
+jobs:
+  publish-npm:
+    name: Publish npm package(s)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://npm.pkg.github.com
+          scope: "@brefwiz"
+
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for PKG_DIR in ${{ inputs.packages }}; do
+            echo "==> Building and publishing ${PKG_DIR}"
+            cd "${PKG_DIR}"
+            npm ci
+            npm run build
+            # Ensure publishConfig points to GitHub Packages
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.publishConfig = { registry: 'https://npm.pkg.github.com' };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            npm publish --access public
+            cd ..
+          done
+
+      - name: Mirror to npmjs.com
+        if: ${{ inputs.mirror-npmjs }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.npm-token }}
+        run: |
+          # Switch auth to npmjs.com for the mirror publish
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          for PKG_DIR in ${{ inputs.packages }}; do
+            echo "==> Mirroring ${PKG_DIR} to npmjs.com"
+            cd "${PKG_DIR}"
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.publishConfig = { registry: 'https://registry.npmjs.org' };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            npm publish --access public
+            cd ..
+          done
