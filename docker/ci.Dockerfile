@@ -12,7 +12,7 @@
 #   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
 #   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
 
-ARG RUST_VERSION=1.95
+ARG RUST_VERSION=1.95.0
 ARG API_BONES_SDK_GEN_VERSION=0.1.0
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
@@ -42,9 +42,13 @@ ARG CARGO_VULN_POLICY_VALIDATOR_REF
 ARG API_BONES_SDK_GEN_VERSION
 
 # ── Rust toolchain ─────────────────────────────────────────────────────────────
+# RUSTUP_TOOLCHAIN pins every cargo/rustup invocation to the exact version
+# baked into the image, preventing rustup from auto-updating stable to a newer
+# build that has no components installed.
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUSTUP_TOOLCHAIN=${RUST_VERSION}
 
 RUN mkdir -p /usr/local/cargo /usr/local/rustup \
     && chmod -R a+rwX /usr/local/cargo /usr/local/rustup
