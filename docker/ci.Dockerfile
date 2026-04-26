@@ -12,7 +12,7 @@
 #   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
 #   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
 
-ARG RUST_VERSION=1.95
+ARG RUST_VERSION=1.94.1
 ARG API_BONES_SDK_GEN_VERSION=0.1.0
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
@@ -110,7 +110,8 @@ ENV CARGO_TERM_COLOR=always \
     SQLX_OFFLINE=true \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=30G \
-    SCCACHE_IDLE_TIMEOUT=0
+    SCCACHE_IDLE_TIMEOUT=0 \
+    RUSTUP_TOOLCHAIN=1.94.1
 
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup

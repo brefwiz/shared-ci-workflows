@@ -27,6 +27,14 @@ on:
         description: Use policies/ from this repo for cargo-audit and cargo-deny
         type: boolean
         default: true
+      run-no-default-features:
+        description: Run clippy and tests with --no-default-features (disable for crates that require at least one feature)
+        type: boolean
+        default: true
+      run-collector:
+        description: Mount the Docker socket and start docker compose services before tests (for crates that require a live OTel Collector)
+        type: boolean
+        default: false
       extra-test-flags:
         description: Extra flags appended to `cargo nextest run`
         type: string
@@ -55,18 +63,47 @@ jobs:
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Clippy (no default features)
+        if: inputs.run-no-default-features
         run: cargo clippy --workspace --no-default-features -- -D warnings
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    container: ${{ inputs.container-image }}
+    container:
+      image: ${{ inputs.container-image }}
+      options: ${{ inputs.run-collector && '--volume /var/run/docker.sock:/var/run/docker.sock' || '' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Start services
+        if: inputs.run-collector
+        run: |
+          mkdir -p collector-output && chmod 777 collector-output
+          docker compose up -d
+          echo "Waiting for collector health endpoint on :13133..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:13133/ > /dev/null 2>&1; then
+              echo "Collector ready after ${i}s"
+              break
+            fi
+            sleep 1
+            if [ "$i" -eq 60 ]; then
+              echo "Collector did not become ready within 60 seconds"
+              docker compose ps
+              docker compose logs --tail=100
+              exit 1
+            fi
+          done
+
       - name: Test (all features)
         run: cargo nextest run --workspace --all-features ${{ inputs.extra-test-flags }}
       - name: Test (no default features)
+        if: inputs.run-no-default-features
         run: cargo nextest run --workspace --no-default-features ${{ inputs.extra-test-flags }}
+
+      - name: Stop services
+        if: inputs.run-collector
+        run: docker compose down 2>/dev/null || true
 
   no-std:
     name: no_std
