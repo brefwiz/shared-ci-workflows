@@ -110,7 +110,8 @@ ENV CARGO_TERM_COLOR=always \
     SQLX_OFFLINE=true \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=30G \
-    SCCACHE_IDLE_TIMEOUT=0
+    SCCACHE_IDLE_TIMEOUT=0 \
+    RUSTUP_TOOLCHAIN=1.94.1
 
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
