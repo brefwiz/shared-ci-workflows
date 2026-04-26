@@ -27,6 +27,10 @@ on:
         description: Use policies/ from this repo for cargo-audit and cargo-deny
         type: boolean
         default: true
+      run-no-default-features:
+        description: Run clippy and tests with --no-default-features (disable for crates that require at least one feature)
+        type: boolean
+        default: true
       extra-test-flags:
         description: Extra flags appended to `cargo nextest run`
         type: string
@@ -55,6 +59,7 @@ jobs:
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Clippy (no default features)
+        if: inputs.run-no-default-features
         run: cargo clippy --workspace --no-default-features -- -D warnings
 
   test:
@@ -66,6 +71,7 @@ jobs:
       - name: Test (all features)
         run: cargo nextest run --workspace --all-features ${{ inputs.extra-test-flags }}
       - name: Test (no default features)
+        if: inputs.run-no-default-features
         run: cargo nextest run --workspace --no-default-features ${{ inputs.extra-test-flags }}
 
   no-std:
