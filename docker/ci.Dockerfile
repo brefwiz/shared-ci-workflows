@@ -12,7 +12,7 @@
 #   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
 #   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
 
-ARG RUST_VERSION=1.95
+ARG RUST_VERSION=1.94.1
 ARG API_BONES_SDK_GEN_VERSION=0.1.0
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
