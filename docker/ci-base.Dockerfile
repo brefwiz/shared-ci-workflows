@@ -15,6 +15,7 @@
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
 #   - Zig (used by cargo-zigbuild for reliable musl cross-compilation)
+#   - aarch64-linux-musl-strip, x86_64-linux-musl-strip (symlink aliases for strip)
 
 ARG NODE_MAJOR=24
 ARG ZIG_VERSION=0.14.0
@@ -122,6 +123,16 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/* \
     && docker --version \
     && docker buildx version
+
+# ── musl strip aliases ────────────────────────────────────────────────────────
+# aarch64-linux-gnu-strip (from gcc-aarch64-linux-gnu) strips musl ELF identically
+# to a hypothetical aarch64-linux-musl-strip: strip is libc-agnostic.
+# x86_64: the host strip (binutils) handles x86_64 musl ELF natively; we expose a
+# named alias so callers can use a consistent aarch64/x86_64 naming convention.
+RUN ln -s /usr/bin/aarch64-linux-gnu-strip /usr/local/bin/aarch64-linux-musl-strip \
+    && ln -s /usr/bin/strip                /usr/local/bin/x86_64-linux-musl-strip \
+    && aarch64-linux-musl-strip --version \
+    && x86_64-linux-musl-strip --version
 
 # ── nats-server ───────────────────────────────────────────────────────────────
 RUN curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" \
