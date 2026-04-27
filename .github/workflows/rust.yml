@@ -64,6 +64,9 @@ jobs:
       - name: Makefile contract check
         shell: bash
         run: bash .shared-ci/scripts/check-makefile-contract.sh --strict-pre-commit
+      - name: Release changelog check
+        shell: bash
+        run: bash .shared-ci/scripts/check-release-changelog.sh
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Clippy (no default features)
