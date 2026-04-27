@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-REQUIRED_TARGETS=(help fmt ci-format ci-lint ci-test ci-coverage pre-commit)
+REQUIRED_TARGETS=(help fmt ci-format ci-lint ci-test ci-coverage ci-changelog pre-commit)
 
 if [[ ! -f "$MAKEFILE" ]]; then
   echo "::error::Makefile contract: $MAKEFILE not found." >&2
@@ -51,7 +51,7 @@ fi
 
 if [[ "$STRICT_PRE_COMMIT" == "true" ]]; then
   PRE_COMMIT_LINE="$(grep -E '^pre-commit:' "$MAKEFILE" | head -1)"
-  for prereq in ci-format ci-lint ci-test; do
+  for prereq in ci-format ci-lint ci-test ci-changelog; do
     if ! echo "$PRE_COMMIT_LINE" | grep -qw "$prereq"; then
       echo "::error::Makefile contract: pre-commit must depend on '$prereq' (found: $PRE_COMMIT_LINE)" >&2
       exit 1
