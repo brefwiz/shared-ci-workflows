@@ -51,7 +51,16 @@ fi
 
 case "$MANIFEST" in
   *Cargo.toml)
-    VERSION="$(awk '/^\[package\]/,/^\[/{ if ($1=="version") { gsub(/[" ]/,"",$3); print $3; exit } }' "$MANIFEST")"
+    # Match either [package] or [workspace.package] section.
+    VERSION="$(awk '
+      /^\[package\]/        { in_pkg = 1; next }
+      /^\[workspace\.package\]/ { in_ws = 1;  next }
+      /^\[/                 { in_pkg = 0; in_ws = 0 }
+      (in_pkg || in_ws) && $1 == "version" {
+        gsub(/[" ]/, "", $3)
+        print $3
+        exit
+      }' "$MANIFEST")"
     [[ -z "$VERSION" ]] && VERSION="$(grep -m1 '^version' "$MANIFEST" | sed -E 's/.*"([^"]+)".*/\1/')"
     ;;
   *package.json)
