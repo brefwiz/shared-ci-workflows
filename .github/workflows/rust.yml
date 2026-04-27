@@ -56,6 +56,14 @@ jobs:
     container: ${{ inputs.container-image }}
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout shared-ci-workflows
+        uses: actions/checkout@v4
+        with:
+          repository: brefwiz/shared-ci-workflows
+          path: .shared-ci
+      - name: Makefile contract check
+        shell: bash
+        run: bash .shared-ci/scripts/check-makefile-contract.sh --strict-pre-commit
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Clippy (no default features)
