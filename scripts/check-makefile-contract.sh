@@ -34,9 +34,23 @@ if [[ ! -f "$MAKEFILE" ]]; then
   exit 1
 fi
 
+# Match a target on a Makefile line, accounting for multi-target declarations
+# like "fmt format: ## ...". Awk splits on ':' once, then on whitespace.
+target_declared() {
+  local target="$1" makefile="$2"
+  awk -v t="$target" '
+    /^[A-Za-z_][A-Za-z0-9_.-]*([[:space:]]+[A-Za-z_][A-Za-z0-9_.-]*)*[[:space:]]*:/ {
+      head = $0
+      sub(/:.*/, "", head)
+      n = split(head, names, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) if (names[i] == t) { print "yes"; exit }
+    }
+  ' "$makefile" | grep -q yes
+}
+
 MISSING=()
 for t in "${REQUIRED_TARGETS[@]}"; do
-  if ! grep -qE "^${t}:" "$MAKEFILE"; then
+  if ! target_declared "$t" "$MAKEFILE"; then
     MISSING+=("$t")
   fi
 done
