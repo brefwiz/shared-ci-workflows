@@ -16,6 +16,9 @@
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
 #   - Zig (used by cargo-zigbuild for reliable musl cross-compilation)
 #   - aarch64-linux-musl-strip, x86_64-linux-musl-strip (symlink aliases for strip)
+#
+# Multi-arch: linux/amd64 and linux/arm64. All download URLs use
+# $(dpkg --print-architecture) or equivalent arch detection at build time.
 
 ARG NODE_MAJOR=24
 ARG ZIG_VERSION=0.14.0
@@ -47,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
     protobuf-compiler libprotobuf-dev \
     # Tools
-    ca-certificates curl git make jq tar \
+    ca-certificates curl git make jq tar xz-utils \
     # Python
     python3 python3-pip python3-venv \
     # Java 21 (openapi-generator-cli)
@@ -57,16 +60,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
-# musl.cc is unreliable from GitHub Actions runners. Zig ships its own libc
-# headers (including musl) and acts as a drop-in C cross-compiler for any
-# target triple. cargo-zigbuild (installed in the ci layer) wraps cargo build
-# to use Zig as the linker/compiler, replacing the musl.cc toolchain entirely.
-# Zig releases are hosted on GitHub — always reachable from Actions.
-RUN curl -fsSL --retry 5 --retry-delay 5 \
-      "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
-      -o /tmp/zig.tar.xz \
+# Zig uses x86_64/aarch64 naming; map from dpkg's amd64/arm64.
+RUN DPKG_ARCH=$(dpkg --print-architecture) \
+    && case "$DPKG_ARCH" in \
+         amd64) ZIG_ARCH="x86_64"  ;; \
+         arm64) ZIG_ARCH="aarch64" ;; \
+         *) echo "Unsupported arch: $DPKG_ARCH" && exit 1 ;; \
+       esac \
+    && curl -fsSL --retry 5 --retry-delay 5 \
+         "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}.tar.xz" \
+         -o /tmp/zig.tar.xz \
     && tar -xJ -C /usr/local/lib -f /tmp/zig.tar.xz \
-    && ln -s "/usr/local/lib/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && ln -s "/usr/local/lib/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}/zig" /usr/local/bin/zig \
     && rm /tmp/zig.tar.xz \
     && zig version
 
@@ -88,19 +93,24 @@ RUN curl -fsSL \
     && openapi-generator version
 
 # ── kubectl ───────────────────────────────────────────────────────────────────
-RUN curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+# kubectl release arch names match dpkg: amd64, arm64.
+RUN curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/$(dpkg --print-architecture)/kubectl" \
     -o /usr/local/bin/kubectl \
     && chmod +x /usr/local/bin/kubectl \
     && kubectl version --client
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
-RUN curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" \
-    | tar -xz --strip-components=1 -C /usr/local/bin linux-amd64/helm \
+# Helm archive path uses linux-amd64 / linux-arm64.
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+       | tar -xz --strip-components=1 -C /usr/local/bin "linux-${ARCH}/helm" \
     && helm version
 
 # ── Helmfile ──────────────────────────────────────────────────────────────────
-RUN curl -fsSL "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /usr/local/bin helmfile \
+# Helmfile asset name uses linux_amd64 / linux_arm64 (underscores).
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_${ARCH}.tar.gz" \
+       | tar -xz -C /usr/local/bin helmfile \
     && helmfile --version
 
 # ── k3d ───────────────────────────────────────────────────────────────────────
@@ -135,9 +145,11 @@ RUN ln -s /usr/bin/aarch64-linux-gnu-strip /usr/local/bin/aarch64-linux-musl-str
     && x86_64-linux-musl-strip --version
 
 # ── nats-server ───────────────────────────────────────────────────────────────
-RUN curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" \
-    | tar -xz --strip-components=1 -C /usr/local/bin \
-        "nats-server-v${NATS_VERSION}-linux-amd64/nats-server" \
+# NATS asset name uses linux-amd64 / linux-arm64.
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz" \
+       | tar -xz --strip-components=1 -C /usr/local/bin \
+           "nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" \
     && nats-server --version
 
 # ── Labels ────────────────────────────────────────────────────────────────────
