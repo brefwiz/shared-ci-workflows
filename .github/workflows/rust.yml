@@ -7,6 +7,8 @@ name: Rust CI (reusable)
 #       uses: brefwiz/shared-ci-workflows/.github/workflows/rust.yml@main
 #       with:
 #         run-coverage: true
+#         run-publish-readiness: true
+#         publish-packages: quorumauth-sdk-edge quorumauth-sdk-origin quorumauth-sdk-origin-community
 
 on:
   workflow_call:
@@ -33,6 +35,14 @@ on:
         default: true
       extra-test-flags:
         description: Extra flags appended to `cargo nextest run`
+        type: string
+        default: ""
+      run-publish-readiness:
+        description: Run cargo package --locked for every crate in publish-packages
+        type: boolean
+        default: false
+      publish-packages:
+        description: Space-separated list of crate names to verify with cargo package --locked
         type: string
         default: ""
       container-image:
@@ -152,3 +162,25 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+
+  publish-readiness:
+    name: Publish Readiness (cargo package)
+    runs-on: ubuntu-latest
+    container: ${{ inputs.container-image }}
+    if: inputs.run-publish-readiness
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo package --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages="${{ inputs.publish-packages }}"
+          if [ -z "$packages" ]; then
+            echo "::error::run-publish-readiness is true but publish-packages is empty"
+            exit 1
+          fi
+          for pkg in $packages; do
+            echo "::group::cargo package --locked -p $pkg"
+            cargo package --locked -p "$pkg"
+            echo "::endgroup::"
+          done
