@@ -10,6 +10,7 @@
 #   - openapi-generator-cli (pinned jar, exposed as `openapi-generator`)
 #   - kubectl, helm, helmfile, k3d
 #   - nats-server
+#   - buf (protobuf linter / breaking-change detector)
 #   - @redocly/cli (npm global)
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
@@ -27,6 +28,7 @@ ARG KUBECTL_VERSION=1.35.2
 ARG HELM_VERSION=4.1.3
 ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
+ARG BUF_VERSION=1.47.2
 
 FROM debian:trixie-slim
 
@@ -37,6 +39,7 @@ ARG KUBECTL_VERSION
 ARG HELM_VERSION
 ARG HELMFILE_VERSION
 ARG NATS_VERSION
+ARG BUF_VERSION
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -152,7 +155,18 @@ RUN ARCH=$(dpkg --print-architecture) \
            "nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" \
     && nats-server --version
 
+# ── buf (protobuf linter / breaking-change detector) ─────────────────────────
+# Replaces brefwiz/ci-workflows install-buf composite action — baked in so
+# CI jobs don't reinstall on every run. Asset name uses Linux-x86_64 /
+# Linux-aarch64 (note: capital L, and aarch64 — distinct from kubectl/helm).
+RUN UNAME_M=$(uname -m) \
+    && curl -fsSL --retry 5 --retry-delay 5 \
+        "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-${UNAME_M}" \
+        -o /usr/local/bin/buf \
+    && chmod +x /usr/local/bin/buf \
+    && buf --version
+
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci-base" \
-      org.opencontainers.image.description="Base CI image — Node, Java, openapi-generator, kubectl, helm, k3d, nats" \
+      org.opencontainers.image.description="Base CI image — Node, Java, openapi-generator, kubectl, helm, k3d, nats, buf" \
       org.opencontainers.image.source="https://github.com/brefwiz/shared-ci-workflows"
