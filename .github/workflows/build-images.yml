@@ -20,9 +20,21 @@ env:
   CI_IMAGE: ghcr.io/brefwiz/ci
 
 jobs:
+  # Per-arch native builds. QEMU emulation of arm64 is unviable here:
+  # ci.Dockerfile compiles ~10 cargo tools from source (cargo-llvm-cov,
+  # sccache, sqlx-cli, …); emulated arm64 cargo-install of that set
+  # exceeds the 6h job timeout (see run 25073269858).
   build-images:
-    name: Build & push ci-base and ci
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -36,59 +48,78 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU (arm64 emulation for cross-build)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
       # ── ci-base ──────────────────────────────────────────────────────────────
 
-      - name: Docker meta (ci-base)
-        id: meta-base
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.CI_BASE_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
-
-      - name: Build and push ci-base
-        id: build-base
+      - name: Build and push ci-base (${{ matrix.arch }})
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/ci-base.Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
-          tags: ${{ steps.meta-base.outputs.tags }}
-          labels: ${{ steps.meta-base.outputs.labels }}
-          cache-from: type=gha,scope=ci-base
-          cache-to: type=gha,mode=max,scope=ci-base
-
-      # ── ci (extends ci-base pushed above) ────────────────────────────────────
-
-      - name: Docker meta (ci)
-        id: meta-ci
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.CI_IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
+            ${{ env.CI_BASE_IMAGE }}:sha-${{ steps.sha.outputs.short }}-${{ matrix.arch }}
+            ${{ env.CI_BASE_IMAGE }}:latest-${{ matrix.arch }}
+          cache-from: type=gha,scope=ci-base-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ci-base-${{ matrix.arch }}
 
-      - name: Build and push ci
+      # ── ci (extends the ci-base just pushed for this arch) ──────────────────
+
+      - name: Build and push ci (${{ matrix.arch }})
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/ci.Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           build-args: |
-            CI_BASE_TAG=${{ steps.meta-base.outputs.version }}
+            CI_BASE_TAG=sha-${{ steps.sha.outputs.short }}-${{ matrix.arch }}
           push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
-          tags: ${{ steps.meta-ci.outputs.tags }}
-          labels: ${{ steps.meta-ci.outputs.labels }}
-          cache-from: type=gha,scope=ci
-          cache-to: type=gha,mode=max,scope=ci
+          tags: |
+            ${{ env.CI_IMAGE }}:sha-${{ steps.sha.outputs.short }}-${{ matrix.arch }}
+            ${{ env.CI_IMAGE }}:latest-${{ matrix.arch }}
+          cache-from: type=gha,scope=ci-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.arch }}
+
+  # Stitch per-arch images into a single multi-arch manifest under the
+  # canonical tags (latest, sha-<short>).
+  manifest:
+    name: Multi-arch manifest
+    needs: build-images
+    if: github.event_name != 'workflow_dispatch' || inputs.push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifests
+        env:
+          IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          set -euo pipefail
+          short=$(echo ${{ github.sha }} | cut -c1-7)
+          for image in "$CI_BASE_IMAGE" "$CI_IMAGE"; do
+            docker buildx imagetools create \
+              -t "${image}:sha-${short}" \
+              "${image}:sha-${short}-amd64" \
+              "${image}:sha-${short}-arm64"
+            if [ "$IS_DEFAULT_BRANCH" = "true" ]; then
+              docker buildx imagetools create \
+                -t "${image}:latest" \
+                "${image}:latest-amd64" \
+                "${image}:latest-arm64"
+            fi
+          done
