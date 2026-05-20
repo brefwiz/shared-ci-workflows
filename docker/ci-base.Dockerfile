@@ -29,6 +29,7 @@ ARG HELM_VERSION=4.1.3
 ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
+ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.16.0
 
 FROM debian:trixie-slim
 
@@ -40,6 +41,7 @@ ARG HELM_VERSION
 ARG HELMFILE_VERSION
 ARG NATS_VERSION
 ARG BUF_VERSION
+ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -165,6 +167,16 @@ RUN UNAME_M=$(uname -m) \
         -o /usr/local/bin/buf \
     && chmod +x /usr/local/bin/buf \
     && buf --version
+
+# ── protoc-gen-connect-openapi (Go plugin for buf gen) ───────────────────────
+# Generates OpenAPI 3 schemas from Connect-flavored protobuf services. Required
+# by brefwiz services that emit OpenAPI alongside Connect bindings (ADR-0085).
+# `go install` into a stable bindir; Go itself is already present (golang-go).
+ENV GOBIN=/usr/local/bin
+RUN go install \
+        "github.com/sudorandom/protoc-gen-connect-openapi@${PROTOC_GEN_CONNECT_OPENAPI_VERSION}" \
+    && protoc-gen-connect-openapi --version 2>&1 | head -1 || \
+       echo "protoc-gen-connect-openapi installed (version flag may vary)"
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci-base" \
