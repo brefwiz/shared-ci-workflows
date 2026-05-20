@@ -153,7 +153,9 @@ RUN ln -s /usr/bin/aarch64-linux-gnu-strip /usr/local/bin/aarch64-linux-musl-str
 # cargo-zigbuild uses zig cc for aarch64 musl builds, but plain `cargo check
 # --target aarch64-unknown-linux-musl` (e.g. publish-preflight) invokes CC
 # directly via cc-rs. Provide a named wrapper so cc-rs finds its compiler.
-RUN printf '#!/bin/sh\nexec zig cc -target aarch64-linux-musl "$@"\n' \
+# cc-rs also passes --target=aarch64-unknown-linux-musl (Rust triple, not zig
+# syntax); strip it — the target is already hardcoded in this wrapper.
+RUN printf '#!/bin/bash\nargs=()\nfor a in "$@"; do [[ "$a" == --target=* ]] || args+=("$a"); done\nexec zig cc -target aarch64-linux-musl "${args[@]}"\n' \
       > /usr/local/bin/aarch64-linux-musl-gcc \
     && chmod +x /usr/local/bin/aarch64-linux-musl-gcc \
     && aarch64-linux-musl-gcc --version
