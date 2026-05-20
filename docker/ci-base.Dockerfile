@@ -54,8 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler libprotobuf-dev \
     # Tools
     ca-certificates curl git make jq tar xz-utils \
-    # Python
-    python3 python3-pip python3-venv \
+    # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
+    python3 python3-pip python3-venv python3-yaml python3-jsonschema \
     # Java 21 (openapi-generator-cli)
     openjdk-21-jdk-headless \
     # Go (SDK generation utilities)
