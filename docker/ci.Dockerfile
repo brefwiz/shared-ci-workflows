@@ -112,7 +112,11 @@ ENV CARGO_TERM_COLOR=always \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=30G \
     SCCACHE_IDLE_TIMEOUT=0 \
-    RUSTUP_TOOLCHAIN=1.94.1
+    RUSTUP_TOOLCHAIN=1.94.1 \
+    AR_aarch64_unknown_linux_musl=llvm-ar \
+    AWS_LC_SYS_NO_ASM=1 \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
+    CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
 
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
