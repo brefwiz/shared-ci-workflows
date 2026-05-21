@@ -163,6 +163,16 @@ RUN printf '#!/bin/bash\nargs=()\nfor a in "$@"; do\n  [[ "$a" == --target=* ]] 
     && chmod +x /usr/local/bin/aarch64-linux-musl-gcc \
     && aarch64-linux-musl-gcc --version
 
+# ── llvm-ar wrapper ───────────────────────────────────────────────────────────
+# ci.Dockerfile sets AR_aarch64_unknown_linux_musl=llvm-ar so cc-rs uses the
+# right archiver for aarch64-musl builds (ring, aws-lc-sys, zstd-sys). zig ar
+# provides a fully compatible ar implementation; expose it as llvm-ar so the
+# env var resolves without requiring the full llvm package.
+RUN printf '#!/bin/sh\nexec zig ar "$@"\n' \
+      > /usr/local/bin/llvm-ar \
+    && chmod +x /usr/local/bin/llvm-ar \
+    && llvm-ar --version
+
 # ── nats-server ───────────────────────────────────────────────────────────────
 # NATS asset name uses linux-amd64 / linux-arm64.
 RUN ARCH=$(dpkg --print-architecture) \
