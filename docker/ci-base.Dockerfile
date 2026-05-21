@@ -158,7 +158,27 @@ RUN ln -s /usr/bin/aarch64-linux-gnu-strip /usr/local/bin/aarch64-linux-musl-str
 # -march=* flags from crate build scripts (ring, aws-lc-sys, zstd-sys) use GCC
 # arch names (e.g. armv8.4-a) that Zig's CC frontend does not recognise. Strip
 # them: the target triple already encodes the architecture for Zig.
-RUN printf '#!/bin/bash\nargs=()\nfor a in "$@"; do\n  [[ "$a" == --target=* ]] && continue\n  [[ "$a" == -march=* ]]   && continue\n  args+=("$a")\ndone\nexec zig cc -target aarch64-linux-musl "${args[@]}"\n' \
+# Linking fix: when Rust uses this wrapper as a linker driver for the final
+# binary, it passes -nostartfiles and provides crt1.o from its own musl sysroot
+# explicitly. zig cc also injects crt1.o from Zig's cache, producing a duplicate
+# _start symbol. Detect linker invocations (-nostartfiles present, no -c flag)
+# and add -Wl,--allow-multiple-definition so lld picks the first definition and
+# ignores the duplicate. C-only compilations (-c present) are unaffected.
+RUN printf '#!/bin/bash\n\
+args=()\n\
+has_nostartfiles=false\n\
+is_compile_only=false\n\
+for a in "$@"; do\n\
+  [[ "$a" == --target=* ]]    && continue\n\
+  [[ "$a" == -march=* ]]      && continue\n\
+  [[ "$a" == -nostartfiles ]] && has_nostartfiles=true\n\
+  [[ "$a" == -c ]]            && is_compile_only=true\n\
+  args+=("$a")\n\
+done\n\
+if $has_nostartfiles && ! $is_compile_only; then\n\
+  args+=("-Wl,--allow-multiple-definition")\n\
+fi\n\
+exec zig cc -target aarch64-linux-musl "${args[@]}"\n' \
       > /usr/local/bin/aarch64-linux-musl-gcc \
     && chmod +x /usr/local/bin/aarch64-linux-musl-gcc \
     && aarch64-linux-musl-gcc --version
