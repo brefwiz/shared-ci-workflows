@@ -54,8 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     musl-tools gcc-aarch64-linux-gnu \
     # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
     protobuf-compiler libprotobuf-dev \
-    # Tools
-    ca-certificates curl git make jq tar xz-utils \
+    # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
+    ca-certificates curl git make cmake jq tar xz-utils \
     # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
     python3 python3-pip python3-venv python3-yaml python3-jsonschema \
     # Java 21 (openapi-generator-cli)
