@@ -115,7 +115,12 @@ ENV CARGO_TERM_COLOR=always \
     RUSTUP_TOOLCHAIN=1.94.1 \
     AR_aarch64_unknown_linux_musl=llvm-ar \
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
-    CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
+    CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc \
+    # zig cc (our musl-gcc wrapper) provides its own crt1.o; rustc's
+    # self-contained crt also ships crt1.o for aarch64-unknown-linux-musl,
+    # causing duplicate `_start` at link time. Tell rustc to skip its
+    # self-contained linker components for this target — zig owns crt.
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=no"
 
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
