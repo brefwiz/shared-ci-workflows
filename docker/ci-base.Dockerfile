@@ -134,10 +134,11 @@ RUN install -m 0755 -d /etc/apt/keyrings \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        docker-ce-cli docker-buildx-plugin \
+        docker-ce-cli docker-buildx-plugin docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/* \
     && docker --version \
-    && docker buildx version
+    && docker buildx version \
+    && docker compose version
 
 # ── musl strip aliases ────────────────────────────────────────────────────────
 # aarch64-linux-gnu-strip (from gcc-aarch64-linux-gnu) strips musl ELF identically
