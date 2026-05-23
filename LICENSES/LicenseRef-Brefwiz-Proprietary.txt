@@ -1,0 +1,17 @@
+Copyright (c) 2026 Brefwiz. All Rights Reserved.
+
+This software and its source code are proprietary and confidential to Brefwiz.
+No license, express or implied, by estoppel or otherwise, to any intellectual
+property rights is granted to any party by this document or by possession of
+this software.
+
+Unauthorized copying, distribution, modification, public display, or public
+performance of this software, in whole or in part, by any means, is strictly
+prohibited. Use is permitted only under a separate written agreement with
+Brefwiz.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+SPDX-License-Identifier: LicenseRef-Brefwiz-Proprietary
