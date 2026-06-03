@@ -8,12 +8,14 @@
 # Added tooling (on top of ci-base):
 #   - Rust stable (rustfmt, clippy, llvm-tools-preview)
 #   - Fast linker: mold + clang (already in base, wired up here)
-#   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli
-#   - cargo-zigbuild (uses Zig from ci-base for reliable aarch64-musl cross-compilation)
-#   - cargo-vuln-policy-validator (central allowlist/policy validation helper)
+#   - cargo-binstall (installs pre-built binaries; avoids recompilation)
+#   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli,
+#     sccache, cargo-zigbuild (pre-built via binstall)
+#   - cargo-vuln-policy-validator, api-bones-sdk-gen (private; compiled from source)
 
 ARG RUST_VERSION=1.94.1
 ARG API_BONES_SDK_GEN_VERSION=4.4.0
+ARG CARGO_BINSTALL_VERSION=1.19.1
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
 ARG CARGO_CHEF_VERSION=0.1.77
@@ -29,6 +31,7 @@ ARG CI_BASE_TAG=latest
 FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}
 
 ARG RUST_VERSION
+ARG CARGO_BINSTALL_VERSION
 ARG CARGO_NEXTEST_VERSION
 ARG CARGO_LLVM_COV_VERSION
 ARG CARGO_CHEF_VERSION
@@ -58,44 +61,56 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
     && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
     && rustc --version && cargo --version
 
-# ── Cargo tools ───────────────────────────────────────────────────────────────
-RUN cargo install cargo-nextest --version ${CARGO_NEXTEST_VERSION} --locked \
-    && cargo install cargo-llvm-cov --version ${CARGO_LLVM_COV_VERSION} --locked \
-    && cargo install cargo-chef --version ${CARGO_CHEF_VERSION} --locked \
-    && cargo install cargo-hack --version ${CARGO_HACK_VERSION} --locked \
-    && cargo install cargo-audit --locked \
-    && cargo install cargo-deny --version ${CARGO_DENY_VERSION} --locked \
-    && cargo install cargo-vuln-policy-validator \
-        --git ${CARGO_VULN_POLICY_VALIDATOR_REPO} \
-        --branch ${CARGO_VULN_POLICY_VALIDATOR_REF} \
-        --locked \
-    && cargo install sqlx-cli \
-        --version ${SQLX_CLI_VERSION} \
-        --no-default-features \
-        --features native-tls,postgres \
-        --locked \
-    && cargo install sccache --version ${SCCACHE_VERSION} --locked \
-    && cargo install cargo-zigbuild --version ${CARGO_ZIGBUILD_VERSION} --locked \
-    && cargo install api-bones-sdk-gen \
-        --version ${API_BONES_SDK_GEN_VERSION} \
-        --locked \
-    && mkdir -p /opt/brefwiz \
-    && api-bones-sdk-gen makefile > /opt/brefwiz/api-bones-sdk.mk \
-    && rm -rf ${CARGO_HOME}/registry/cache \
+# ── cargo-binstall ─────────────────────────────────────────────────────────────
+# Installs pre-built binaries from GitHub releases; avoids compiling from source.
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+         amd64) TRIPLE="x86_64-unknown-linux-musl" ;; \
+         arm64) TRIPLE="aarch64-unknown-linux-musl" ;; \
+         *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+       esac \
+    && curl -fsSL --retry 5 --retry-delay 5 \
+         "https://github.com/cargo-bins/cargo-binstall/releases/download/v${CARGO_BINSTALL_VERSION}/cargo-binstall-${TRIPLE}.tgz" \
+       | tar -xz -C /usr/local/cargo/bin \
+    && cargo-binstall --version
+
+# ── Cargo tools (pre-built binaries via binstall) ──────────────────────────────
+RUN cargo binstall --no-confirm --locked \
+        cargo-nextest@${CARGO_NEXTEST_VERSION} \
+        cargo-llvm-cov@${CARGO_LLVM_COV_VERSION} \
+        cargo-chef@${CARGO_CHEF_VERSION} \
+        cargo-hack@${CARGO_HACK_VERSION} \
+        cargo-audit \
+        cargo-deny@${CARGO_DENY_VERSION} \
+        sccache@${SCCACHE_VERSION} \
+        cargo-zigbuild@${CARGO_ZIGBUILD_VERSION} \
+        sqlx-cli@${SQLX_CLI_VERSION} \
     && cargo nextest --version \
     && cargo llvm-cov --version \
     && cargo chef --version \
     && cargo hack --version \
     && cargo audit --version \
     && cargo deny --version \
+    && sccache --version \
+    && cargo zigbuild --help > /dev/null \
+    && sqlx --version
+
+# ── Private cargo tools (must compile from source) ────────────────────────────
+RUN cargo install cargo-vuln-policy-validator \
+        --git ${CARGO_VULN_POLICY_VALIDATOR_REPO} \
+        --branch ${CARGO_VULN_POLICY_VALIDATOR_REF} \
+        --locked \
+    && cargo install api-bones-sdk-gen \
+        --version ${API_BONES_SDK_GEN_VERSION} \
+        --locked \
+    && mkdir -p /opt/brefwiz \
+    && api-bones-sdk-gen makefile > /opt/brefwiz/api-bones-sdk.mk \
+    && rm -rf ${CARGO_HOME}/registry/cache \
     && printf '[advisories]\nignore = ["RUSTSEC-0000-0000"]\n' > /tmp/smoke-audit.toml \
     && printf '[advisories]\nignore = []\n' > /tmp/smoke-deny.toml \
     && printf 'exceptions:\n  - id: RUSTSEC-0000-0000\n    owner: smoke-test\n    review_by: 2099-01-01\n    reason: smoke test\n    risk: known\n    impact: low\n    tracking: NONE\n    resolution: none\n' > /tmp/smoke-exceptions.yaml \
     && cargo-vuln-policy-validator /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
     && rm /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
-    && sqlx --version \
-    && sccache --version \
-    && cargo zigbuild --help > /dev/null \
     && api-bones-sdk-gen --version
 
 # ── CI-optimised Rust defaults ────────────────────────────────────────────────
