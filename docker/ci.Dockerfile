@@ -15,7 +15,9 @@
 
 ARG RUST_VERSION=1.94.1
 ARG API_BONES_SDK_GEN_VERSION=4.4.0
+
 ARG CARGO_BINSTALL_VERSION=1.19.1
+
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.4
 ARG CARGO_CHEF_VERSION=0.1.77
@@ -72,7 +74,7 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL --retry 5 --retry-delay 5 \
          "https://github.com/cargo-bins/cargo-binstall/releases/download/v${CARGO_BINSTALL_VERSION}/cargo-binstall-${TRIPLE}.tgz" \
        | tar -xz -C /usr/local/cargo/bin \
-    && cargo-binstall --version
+    && cargo-binstall -V
 
 # ── Cargo tools (pre-built binaries via binstall) ──────────────────────────────
 RUN cargo binstall --no-confirm --locked \
