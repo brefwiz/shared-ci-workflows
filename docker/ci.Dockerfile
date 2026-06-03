@@ -74,7 +74,7 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL --retry 5 --retry-delay 5 \
          "https://github.com/cargo-bins/cargo-binstall/releases/download/v${CARGO_BINSTALL_VERSION}/cargo-binstall-${TRIPLE}.tgz" \
        | tar -xz -C /usr/local/cargo/bin \
-    && cargo-binstall --version
+    && cargo-binstall -V
 
 # ── Cargo tools (pre-built binaries via binstall) ──────────────────────────────
 RUN cargo binstall --no-confirm --locked \
