@@ -26,6 +26,7 @@ ARG CARGO_DENY_VERSION=0.19.4
 ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
 ARG CARGO_ZIGBUILD_VERSION=0.19.4
+ARG CARGO_SWEEP_VERSION=0.8.0
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
 ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
@@ -86,6 +87,7 @@ RUN cargo binstall --no-confirm --locked \
         cargo-deny@${CARGO_DENY_VERSION} \
         sccache@${SCCACHE_VERSION} \
         cargo-zigbuild@${CARGO_ZIGBUILD_VERSION} \
+        cargo-sweep@${CARGO_SWEEP_VERSION} \
         sqlx-cli@${SQLX_CLI_VERSION} \
     && cargo nextest --version \
     && cargo llvm-cov --version \
@@ -95,6 +97,7 @@ RUN cargo binstall --no-confirm --locked \
     && cargo deny --version \
     && sccache --version \
     && cargo zigbuild --help > /dev/null \
+    && cargo sweep --version \
     && sqlx --version
 
 # ── Private cargo tools (must compile from source) ────────────────────────────
