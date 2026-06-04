@@ -57,7 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
     ca-certificates curl git make cmake jq rsync tar xz-utils zstd openssh-client \
     # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
-    python3 python3-pip python3-venv python3-yaml python3-jsonschema \
+    python3 python3-pip python3-venv python3-yaml python3-jsonschema python3-pydantic \
     # Java 21 (openapi-generator-cli)
     openjdk-21-jdk-headless \
     # Go (SDK generation utilities)
