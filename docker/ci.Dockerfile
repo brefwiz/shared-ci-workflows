@@ -10,7 +10,7 @@
 #   - Fast linker: mold + clang (already in base, wired up here)
 #   - cargo-binstall (installs pre-built binaries; avoids recompilation)
 #   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli,
-#     sccache, cargo-zigbuild (pre-built via binstall)
+#     sccache, cargo-zigbuild, wasm-pack (pre-built via binstall)
 #   - cargo-vuln-policy-validator, api-bones-sdk-gen (private; compiled from source)
 
 ARG RUST_VERSION=1.94.1
@@ -27,6 +27,7 @@ ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
 ARG CARGO_ZIGBUILD_VERSION=0.19.4
 ARG CARGO_SWEEP_VERSION=0.8.0
+ARG WASM_PACK_VERSION=0.13.1
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
 ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
@@ -44,6 +45,7 @@ ARG CARGO_HACK_VERSION
 ARG SCCACHE_VERSION
 ARG CARGO_ZIGBUILD_VERSION
 ARG CARGO_SWEEP_VERSION
+ARG WASM_PACK_VERSION
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO
 ARG CARGO_VULN_POLICY_VALIDATOR_REF
 ARG API_BONES_SDK_GEN_VERSION
@@ -62,7 +64,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
       --profile minimal \
       --default-toolchain ${RUST_VERSION} \
     && rustup component add rustfmt clippy llvm-tools-preview \
-    && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+    && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl wasm32-unknown-unknown \
     && rustc --version && cargo --version
 
 # ── cargo-binstall ─────────────────────────────────────────────────────────────
@@ -90,6 +92,7 @@ RUN cargo binstall --no-confirm --locked \
         cargo-zigbuild@${CARGO_ZIGBUILD_VERSION} \
         cargo-sweep@${CARGO_SWEEP_VERSION} \
         sqlx-cli@${SQLX_CLI_VERSION} \
+        wasm-pack@${WASM_PACK_VERSION} \
     && cargo nextest --version \
     && cargo llvm-cov --version \
     && cargo chef --version \
@@ -99,7 +102,8 @@ RUN cargo binstall --no-confirm --locked \
     && sccache --version \
     && cargo zigbuild --help > /dev/null \
     && cargo sweep --version \
-    && sqlx --version
+    && sqlx --version \
+    && wasm-pack --version
 
 # ── Private cargo tools (must compile from source) ────────────────────────────
 RUN cargo install cargo-vuln-policy-validator \
