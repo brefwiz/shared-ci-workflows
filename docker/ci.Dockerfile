@@ -21,7 +21,10 @@ ARG CARGO_BINSTALL_VERSION=1.19.1
 ARG CARGO_NEXTEST_VERSION=0.9.114
 ARG CARGO_LLVM_COV_VERSION=0.8.7
 ARG CARGO_CHEF_VERSION=0.1.77
-ARG SQLX_CLI_VERSION=0.8.6
+# 0.9.0: 0.8.x sqlx-cli fails `cargo sqlx prepare --check` with "Issue parsing
+# cargo metadata output" on larger modern dep trees (its bundled cargo_metadata
+# is too old for newer crate manifests). 0.9 also matches the sqlx 0.9 library.
+ARG SQLX_CLI_VERSION=0.9.0
 ARG CARGO_DENY_VERSION=0.19.8
 ARG CARGO_HACK_VERSION=0.6.37
 ARG SCCACHE_VERSION=0.10.0
