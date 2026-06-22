@@ -34,3 +34,12 @@ exceptions:
     impact: low
     tracking: NONE
     resolution: remove once sqlx upgrades to rand 0.9
+
+  - id: RUSTSEC-2026-0173
+    owner: team-security
+    review_by: 2026-09-20
+    reason: "proc-macro-error2 unmaintained; transitive via validator_derive (validator 0.20, latest release) pulled by api-bones and others; not a vulnerability, no upstream fix until validator migrates off it"
+    risk: known
+    impact: low
+    tracking: brefwiz/socle#90
+    resolution: remove once validator migrates off proc-macro-error2
