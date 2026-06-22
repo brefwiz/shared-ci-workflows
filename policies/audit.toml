@@ -25,4 +25,9 @@ ignore = [
     # Remove once sqlx upgrades to rand 0.9.
     # review-by: 2026-07-20
     "RUSTSEC-2026-0097",
+    # proc-macro-error2 unmaintained, transitive via validator_derive (validator 0.20,
+    # latest) which api-bones and others pull. Not a vulnerability; no upstream fix until
+    # validator migrates off it. Tracks brefwiz/socle#90.
+    # review-by: 2026-09-20
+    "RUSTSEC-2026-0173",
 ]
