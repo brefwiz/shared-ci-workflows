@@ -57,12 +57,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
     ca-certificates curl git make cmake jq rsync tar xz-utils zstd openssh-client \
     # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
-    python3 python3-pip python3-venv python3-yaml python3-jsonschema python3-pydantic \
+    python3 python3-pip python3-venv python3-yaml python3-jsonschema python3-pydantic python3-pytest \
     # Java 21 (openapi-generator-cli)
     openjdk-21-jdk-headless \
     # Go (SDK generation utilities)
     golang-go \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Python CI script deps (pip) ────────────────────────────────────────────────
+# pyrefly not packaged in apt (young Rust-based type checker, pip/cargo only).
+RUN python3 -m pip install -q --break-system-packages pyrefly \
+    && pyrefly --version
 
 # ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
 # Zig uses x86_64/aarch64 naming; map from dpkg's amd64/arm64.
