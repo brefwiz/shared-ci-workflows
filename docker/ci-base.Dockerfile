@@ -64,6 +64,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang-go \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Python CI script deps (pip) ────────────────────────────────────────────────
+# pytest, pyrefly not packaged in apt; pydantic/pyyaml/jsonschema pinned here too
+# so version drift between apt and pip doesn't bite check-spec.py et al.
+RUN python3 -m pip install -q --break-system-packages \
+        pytest pydantic pyyaml jsonschema pyrefly \
+    && pytest --version && pyrefly --version
+
 # ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
 # Zig uses x86_64/aarch64 naming; map from dpkg's amd64/arm64.
 RUN DPKG_ARCH=$(dpkg --print-architecture) \
