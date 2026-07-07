@@ -30,6 +30,10 @@ ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.16.0
+# release-please: manifest-first, PR-based release automation for every
+# non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
+# come online) — see ADR-track "unified fleet release engine" design.
+ARG RELEASE_PLEASE_VERSION=17.10.2
 
 FROM debian:trixie-slim
 
@@ -42,6 +46,7 @@ ARG HELMFILE_VERSION
 ARG NATS_VERSION
 ARG BUF_VERSION
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
+ARG RELEASE_PLEASE_VERSION
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -90,8 +95,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && node --version && npm --version \
-    && npm install -g @redocly/cli \
-    && redocly --version
+    && npm install -g @redocly/cli release-please@${RELEASE_PLEASE_VERSION} \
+    && redocly --version \
+    && release-please --version
 
 # ── openapi-generator-cli ──────────────────────────────────────────────────────
 RUN curl -fsSL \
