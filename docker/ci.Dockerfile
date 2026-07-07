@@ -31,6 +31,11 @@ ARG SCCACHE_VERSION=0.10.0
 ARG CARGO_ZIGBUILD_VERSION=0.19.4
 ARG CARGO_SWEEP_VERSION=0.8.0
 ARG WASM_PACK_VERSION=0.13.1
+# release-plz: real upstream binary (release-pr / release two-step flow) —
+# sole tag authority for the Rust axis. Replaces the hand-rolled
+# release-plz-bump.py clone, which had a non-atomic commit/tag/publish
+# sequence (see "unified fleet release engine" design).
+ARG RELEASE_PLZ_VERSION=0.3.159
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
 ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
@@ -49,6 +54,7 @@ ARG SCCACHE_VERSION
 ARG CARGO_ZIGBUILD_VERSION
 ARG CARGO_SWEEP_VERSION
 ARG WASM_PACK_VERSION
+ARG RELEASE_PLZ_VERSION
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO
 ARG CARGO_VULN_POLICY_VALIDATOR_REF
 ARG API_BONES_SDK_GEN_VERSION
@@ -96,6 +102,7 @@ RUN cargo binstall --no-confirm --locked \
         cargo-sweep@${CARGO_SWEEP_VERSION} \
         sqlx-cli@${SQLX_CLI_VERSION} \
         wasm-pack@${WASM_PACK_VERSION} \
+        release-plz@${RELEASE_PLZ_VERSION} \
     && cargo nextest --version \
     && cargo llvm-cov --version \
     && cargo chef --version \
@@ -106,7 +113,8 @@ RUN cargo binstall --no-confirm --locked \
     && cargo zigbuild --help > /dev/null \
     && cargo sweep --version \
     && sqlx --version \
-    && wasm-pack --version
+    && wasm-pack --version \
+    && release-plz --version
 
 # ── Private cargo tools (must compile from source) ────────────────────────────
 RUN cargo install cargo-vuln-policy-validator \
