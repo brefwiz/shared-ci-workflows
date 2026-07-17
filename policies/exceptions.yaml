@@ -1,30 +1,30 @@
 exceptions:
   - id: RUSTSEC-2026-0098
     owner: team-security
-    review_by: 2026-07-15
-    reason: "rustls-webpki 0.101.7 via rustls 0.21 → aws-smithy-http-client 1.1.12; TLS cert name-constraint edge cases not triggered by AWS service endpoint calls"
+    review_by: 2026-08-17
+    reason: "rustls-webpki 0.101.7 via rustls 0.21 → aws-smithy-http-client 1.2.0 (checked 2026-07-17: legacy hyper-0.14/rustls-0.21 stack still resolves unconditionally in the latest release; sealwiz already applies the available consumer-side mitigation); TLS cert name-constraint edge cases not triggered by AWS service endpoint calls"
     risk: known
     impact: low
-    tracking: NONE
-    resolution: remove once aws-smithy-http-client migrates to rustls 0.22+
+    tracking: brefwiz/shared-ci-workflows#61
+    resolution: remove once aws-smithy-http-client drops or feature-gates the legacy rustls-0.21 stack
 
   - id: RUSTSEC-2026-0099
     owner: team-security
-    review_by: 2026-07-15
-    reason: "rustls-webpki 0.101.7 via rustls 0.21 → aws-smithy-http-client 1.1.12; TLS cert name-constraint edge cases not triggered by AWS service endpoint calls"
+    review_by: 2026-08-17
+    reason: "rustls-webpki 0.101.7 via rustls 0.21 → aws-smithy-http-client 1.2.0 (checked 2026-07-17: legacy hyper-0.14/rustls-0.21 stack still resolves unconditionally in the latest release; sealwiz already applies the available consumer-side mitigation); TLS cert name-constraint edge cases not triggered by AWS service endpoint calls"
     risk: known
     impact: low
-    tracking: NONE
-    resolution: remove once aws-smithy-http-client migrates to rustls 0.22+
+    tracking: brefwiz/shared-ci-workflows#61
+    resolution: remove once aws-smithy-http-client drops or feature-gates the legacy rustls-0.21 stack
 
   - id: RUSTSEC-2023-0071
     owner: team-security
-    review_by: 2026-07-15
-    reason: "rsa Marvin Attack timing side-channel via sqlx 0.8 lockfile; only postgres feature used at runtime, MySQL + RSA code never linked"
+    review_by: 2026-08-17
+    reason: "rsa Marvin Attack timing side-channel; transitive via sqlx's mysql feature family (checked 2026-07-17: sqlx already at latest 0.9.0, postgres-only consumers unaffected in practice — no patched rsa release exists upstream, this is a long-standing unresolved rsa-crate advisory, not a stale sqlx pin); only postgres feature used at runtime, MySQL + RSA code never linked"
     risk: known
     impact: low
-    tracking: NONE
-    resolution: remove once sqlx ships a patched version
+    tracking: brefwiz/shared-ci-workflows#62
+    resolution: remove once rsa ships a fix, or sqlx drops the transitive rsa dep for postgres-only builds
 
   - id: RUSTSEC-2026-0097
     owner: team-security
