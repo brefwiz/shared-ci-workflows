@@ -26,15 +26,6 @@ exceptions:
     tracking: brefwiz/shared-ci-workflows#62
     resolution: remove once rsa ships a fix, or sqlx drops the transitive rsa dep for postgres-only builds
 
-  - id: RUSTSEC-2026-0097
-    owner: team-security
-    review_by: 2026-07-20
-    reason: "rand UB when custom logger calls rand::rng() during ThreadRng reseed; via sqlx-postgres 0.8 → rand 0.8; UB conditions not met (no custom logger + trace logging + reseed path)"
-    risk: known
-    impact: low
-    tracking: NONE
-    resolution: remove once sqlx upgrades to rand 0.9
-
   - id: RUSTSEC-2026-0173
     owner: team-security
     review_by: 2026-09-20
