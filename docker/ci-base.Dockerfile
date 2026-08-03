@@ -193,6 +193,63 @@ RUN printf '#!/bin/sh\nexec zig ar "$@"\n' \
     && chmod +x /usr/local/bin/llvm-ar \
     && llvm-ar --version
 
+# ── libunwind for static musl targets ─────────────────────────────────────────
+# jemalloc built with --enable-prof-libunwind calls unw_backtrace on every
+# sampled allocation. Without a musl-built libunwind, jemalloc falls back to
+# libgcc's _Unwind_Backtrace, which has no working unwind path in a statically
+# linked musl binary: brefwiz-spiffe shipped that three times and each release
+# segfaulted in production rather than failing in CI.
+#
+# The apt libunwind-dev above covers glibc host builds. It cannot serve musl
+# targets — Debian's build links glibc — so both musl arches are built here
+# from source.
+#
+# Built with zig cc for both arches rather than musl-gcc for one and zig for
+# the other: musl-gcc targets whatever the builder happens to be, and this
+# image is built for amd64 and arm64. Zig makes the output independent of the
+# builder, which is the same reason the aarch64 wrapper above exists.
+#
+# --disable-minidebuginfo is load-bearing, not tidiness. With it enabled
+# libunwind reads LZMA-compressed .gnu_debugdata and needs liblzma and libz at
+# static link time; a dynamic link hides that behind DT_NEEDED, a static one
+# does not, and consumers would have to carry both. Disabling it makes the
+# archive self-contained for the only thing jemalloc wants from it.
+ARG LIBUNWIND_VERSION=1.8.3
+RUN set -eux; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/libunwind/libunwind/releases/download/v${LIBUNWIND_VERSION}/libunwind-${LIBUNWIND_VERSION}.tar.gz" \
+      -o /tmp/libunwind.tar.gz; \
+    for ARCH in x86_64 aarch64; do \
+      rm -rf /tmp/lu && mkdir -p /tmp/lu; \
+      tar -xzf /tmp/libunwind.tar.gz -C /tmp/lu --strip-components=1; \
+      cd /tmp/lu; \
+      CC="zig cc -target ${ARCH}-linux-musl" \
+      AR="zig ar" \
+      RANLIB="zig ranlib" \
+      ./configure \
+        --host="${ARCH}-linux-musl" \
+        --prefix="/usr/local/musl/${ARCH}" \
+        --enable-static --disable-shared \
+        --disable-minidebuginfo \
+        --disable-tests --disable-documentation; \
+      make -j"$(nproc)"; \
+      make install; \
+    done; \
+    rm -rf /tmp/lu /tmp/libunwind.tar.gz
+# Verify rather than assume: the archive must exist for both arches AND
+# actually define unw_backtrace, which is the single symbol jemalloc needs.
+# An archive that builds but does not export it would fail at link time in a
+# consumer, which is exactly the class of failure this whole change exists to
+# stop happening downstream.
+RUN set -eux; \
+    for ARCH in x86_64 aarch64; do \
+      test -f "/usr/local/musl/${ARCH}/lib/libunwind.a"; \
+      nm --print-armap "/usr/local/musl/${ARCH}/lib/libunwind.a" \
+        | grep -q "^unw_backtrace in " \
+        || { echo "libunwind for ${ARCH} does not define unw_backtrace"; exit 1; }; \
+    done; \
+    echo "libunwind: musl x86_64 + aarch64 provide unw_backtrace"
+
 # ── nats-server ───────────────────────────────────────────────────────────────
 # NATS asset name uses linux-amd64 / linux-arm64.
 RUN ARCH=$(dpkg --print-architecture) \
