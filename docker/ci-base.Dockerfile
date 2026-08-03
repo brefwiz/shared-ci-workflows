@@ -29,7 +29,7 @@ ARG HELM_VERSION=4.1.3
 ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
-ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.16.0
+ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
 # release-please: manifest-first, PR-based release automation for every
 # non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
 # come online) — see ADR-track "unified fleet release engine" design.
@@ -273,11 +273,32 @@ RUN UNAME_M=$(uname -m) \
 # Generates OpenAPI 3 schemas from Connect-flavored protobuf services. Required
 # by brefwiz services that emit OpenAPI alongside Connect bindings (ADR-0085).
 # `go install` into a stable bindir; Go itself is already present (golang-go).
+#
+# This binary is the ONLY copy consumers resolve: repo buf.gen.yaml files declare
+# `local: protoc-gen-connect-openapi`, which buf looks up on PATH. The version
+# baked here is therefore the version that generates every OpenAPI artifact in
+# the fleet — keep it in step with the pin ci-workflows' install-buf-plugins
+# asserts, or that composite fails the job with a rebake instruction.
+#
+# `go install` at a pinned version authenticates the module against the Go
+# checksum database (sum.golang.org) before building, so no hand-rolled sha256
+# of a release tarball is needed on this path.
+#
+# Assert the built binary reports the pinned version. The previous form ended in
+# `|| echo "...version flag may vary"`, which swallowed EVERY failure on this
+# line — a missing binary or a wrong version still shipped a green image.
+# Reported format: "protoc-gen-connect-openapi v0.25.6 (none) @ unknown; go1.x".
 ENV GOBIN=/usr/local/bin
-RUN go install \
-        "github.com/sudorandom/protoc-gen-connect-openapi@${PROTOC_GEN_CONNECT_OPENAPI_VERSION}" \
-    && protoc-gen-connect-openapi --version 2>&1 | head -1 || \
-       echo "protoc-gen-connect-openapi installed (version flag may vary)"
+RUN set -eux; \
+    go install \
+      "github.com/sudorandom/protoc-gen-connect-openapi@${PROTOC_GEN_CONNECT_OPENAPI_VERSION}"; \
+    reported="$(protoc-gen-connect-openapi --version 2>&1 | head -1)"; \
+    if ! printf '%s\n' "${reported}" \
+         | grep -qwF -- "${PROTOC_GEN_CONNECT_OPENAPI_VERSION}"; then \
+      echo "protoc-gen-connect-openapi: expected ${PROTOC_GEN_CONNECT_OPENAPI_VERSION}, got '${reported}'" >&2; \
+      exit 1; \
+    fi; \
+    echo "protoc-gen-connect-openapi ${PROTOC_GEN_CONNECT_OPENAPI_VERSION} at $(command -v protoc-gen-connect-openapi)"
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci-base" \
