@@ -57,6 +57,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # musl-tools: provides musl-gcc for x86_64-unknown-linux-musl
     # gcc-aarch64-linux-gnu: binutils only (objcopy etc.); Zig handles aarch64 musl C compilation
     musl-tools gcc-aarch64-linux-gnu \
+    # libunwind: jemalloc's heap profiling (--enable-prof-libunwind) calls
+    # unw_backtrace on each sampled allocation. Without it, jemalloc falls back
+    # to libgcc's _Unwind_Backtrace, which segfaults in a statically linked musl
+    # binary — brefwiz-spiffe shipped that three times before CI could see it.
+    # This covers glibc host builds and `cargo *--all-features`, which link
+    # -lunwind as soon as the feature is enabled anywhere in the graph. Static
+    # musl targets additionally need a musl-built libunwind; see below.
+    libunwind-dev \
     # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
     protobuf-compiler libprotobuf-dev \
     # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
