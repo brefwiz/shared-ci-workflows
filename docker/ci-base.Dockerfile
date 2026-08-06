@@ -11,7 +11,7 @@
 #   - kubectl, helm, helmfile, k3d
 #   - nats-server
 #   - buf (protobuf linter / breaking-change detector)
-#   - @redocly/cli (npm global)
+#   - @redocly/cli, jscpd (npm global)
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
@@ -34,6 +34,17 @@ ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
 # non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
 # come online) — see ADR-track "unified fleet release engine" design.
 ARG RELEASE_PLEASE_VERSION=17.10.2
+# Duplication gate tooling. All PINNED: jscpd's own token counts drift between
+# versions, and a grammar change moves what the wiring tiers see -- either would
+# re-baseline every repo in a single PR and turn the ratchet into noise.
+#
+# The two tree-sitter pins are versioned independently upstream. The PyPI
+# binding tops out at 0.26.0; the language pack vendors its own grammars and
+# only asks for tree-sitter>=0.23, so the pack pin is the one that actually
+# determines what the parsers do.
+ARG JSCPD_VERSION=5.0.14
+ARG TREE_SITTER_VERSION=0.26.0
+ARG TREE_SITTER_PACK_VERSION=1.14.1
 
 FROM debian:trixie-slim
 
@@ -47,6 +58,9 @@ ARG NATS_VERSION
 ARG BUF_VERSION
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
 ARG RELEASE_PLEASE_VERSION
+ARG JSCPD_VERSION
+ARG TREE_SITTER_VERSION
+ARG TREE_SITTER_PACK_VERSION
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -79,8 +93,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Python CI script deps (pip) ────────────────────────────────────────────────
 # pyrefly not packaged in apt (young Rust-based type checker, pip/cargo only).
-RUN python3 -m pip install -q --break-system-packages pyrefly \
-    && pyrefly --version
+RUN python3 -m pip install -q --break-system-packages \
+      pyrefly \
+      "tree-sitter==${TREE_SITTER_VERSION}" \
+      "tree-sitter-language-pack==${TREE_SITTER_PACK_VERSION}" \
+    && pyrefly --version \
+    && python3 -c "import tree_sitter_language_pack as p; p.get_parser('rust'); print('tree-sitter grammars ok')"
 
 # ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
 # Zig uses x86_64/aarch64 naming; map from dpkg's amd64/arm64.
@@ -103,9 +121,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && node --version && npm --version \
-    && npm install -g @redocly/cli release-please@${RELEASE_PLEASE_VERSION} \
+    && npm install -g @redocly/cli release-please@${RELEASE_PLEASE_VERSION} jscpd@${JSCPD_VERSION} \
     && redocly --version \
-    && release-please --version
+    && release-please --version \
+    && jscpd --version
 
 # ── openapi-generator-cli ──────────────────────────────────────────────────────
 RUN curl -fsSL \
