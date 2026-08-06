@@ -46,7 +46,25 @@ ARG JSCPD_VERSION=5.0.14
 ARG TREE_SITTER_VERSION=0.26.0
 ARG TREE_SITTER_PACK_VERSION=1.14.1
 
-FROM debian:trixie-slim
+# Base repository and digest are ARGs so the two lanes that build this file can
+# each reach it the cheapest way. The defaults are the public coordinates, so
+# the GitHub build and anyone building this by hand are unchanged; the internal
+# lane overrides DEBIAN_IMAGE to a registry mirror rather than pulling Docker
+# Hub across the internet on every architecture leg of every build.
+#
+# The digest is the load-bearing half. Our buildah recipe derives its pull
+# policy from this file: every base pinned by digest gets `--pull=missing`,
+# anything tag-based gets `--pull-always`, because a tag can move under a stale
+# local copy. A digest cannot, so pinning removes a full base-image pull per
+# arch, per build. Digests are content addresses, so this same one resolves
+# through a mirror as well as through Docker Hub.
+#
+# renovate: datasource=docker depName=debian
+ARG DEBIAN_IMAGE=debian
+ARG DEBIAN_TAG=trixie-slim
+ARG DEBIAN_DIGEST=sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+
+FROM ${DEBIAN_IMAGE}:${DEBIAN_TAG}@${DEBIAN_DIGEST}
 
 ARG NODE_MAJOR
 ARG ZIG_VERSION
