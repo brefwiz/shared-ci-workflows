@@ -34,11 +34,17 @@ ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
 # non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
 # come online) — see ADR-track "unified fleet release engine" design.
 ARG RELEASE_PLEASE_VERSION=17.10.2
-# Duplication gate tooling. Both are PINNED: jscpd's own token counts drift
-# between versions, and a bump would re-baseline every repo in one PR.
+# Duplication gate tooling. All PINNED: jscpd's own token counts drift between
+# versions, and a grammar change moves what the wiring tiers see -- either would
+# re-baseline every repo in a single PR and turn the ratchet into noise.
+#
+# The two tree-sitter pins are versioned independently upstream. The PyPI
+# binding tops out at 0.26.0; the language pack vendors its own grammars and
+# only asks for tree-sitter>=0.23, so the pack pin is the one that actually
+# determines what the parsers do.
 ARG JSCPD_VERSION=5.0.14
 ARG TREE_SITTER_VERSION=0.26.0
-ARG TREE_SITTER_PACK_VERSION=0.9.0
+ARG TREE_SITTER_PACK_VERSION=1.14.1
 
 FROM debian:trixie-slim
 
