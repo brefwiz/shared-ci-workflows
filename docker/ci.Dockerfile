@@ -8,12 +8,18 @@
 # Added tooling (on top of ci-base):
 #   - Rust stable (rustfmt, clippy, llvm-tools-preview)
 #   - Fast linker: mold + clang (already in base, wired up here)
+#   - pinned nightly (rustdoc JSON for the duplication gate; nightly-only)
 #   - cargo-binstall (installs pre-built binaries; avoids recompilation)
 #   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli,
 #     sccache, cargo-zigbuild, wasm-pack (pre-built via binstall)
 #   - cargo-vuln-policy-validator, api-bones-sdk-gen (private; compiled from source)
 
 ARG RUST_VERSION=1.94.1
+# Nightly exists solely so the duplication gate can emit rustdoc JSON, which is
+# still nightly-only. PINNED to a date, not floating `nightly`: the JSON carries
+# a format_version that changes between nightlies, and a silent bump would move
+# what the gate sees across the whole fleet at once.
+ARG RUST_NIGHTLY=nightly-2026-08-05
 ARG API_BONES_SDK_GEN_VERSION=4.4.0
 
 ARG CARGO_BINSTALL_VERSION=1.19.1
@@ -74,7 +80,9 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
       --default-toolchain ${RUST_VERSION} \
     && rustup component add rustfmt clippy llvm-tools-preview \
     && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl wasm32-unknown-unknown \
-    && rustc --version && cargo --version
+    && rustup toolchain install ${RUST_NIGHTLY} --profile minimal \
+    && rustc --version && cargo --version \
+    && rustc +${RUST_NIGHTLY} --version
 
 # ── cargo-binstall ─────────────────────────────────────────────────────────────
 # Installs pre-built binaries from GitHub releases; avoids compiling from source.
