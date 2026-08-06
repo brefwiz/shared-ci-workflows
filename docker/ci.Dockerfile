@@ -49,6 +49,10 @@ ARG CI_BASE_TAG=latest
 FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}
 
 ARG RUST_VERSION
+# Re-declared in-stage on purpose: an ARG defined only before FROM expands to
+# EMPTY inside the build stage, and `rustup toolchain install ''` fails with
+# `invalid toolchain name ''` rather than with anything naming the real cause.
+ARG RUST_NIGHTLY
 ARG CARGO_BINSTALL_VERSION
 ARG CARGO_NEXTEST_VERSION
 ARG CARGO_LLVM_COV_VERSION
