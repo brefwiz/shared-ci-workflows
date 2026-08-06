@@ -45,8 +45,16 @@ ARG RELEASE_PLZ_VERSION=0.3.159
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
 ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
+# Repository holding the ci-base this image extends. The default publishes and
+# consumes on ghcr, which is where the public repos that call the reusable
+# workflows in this repo pull their job container from -- that path must not
+# move. It is an ARG because this same Dockerfile is also built by an internal
+# pipeline that publishes to a private registry, and a base coordinate baked
+# into the FROM line would force that pipeline to keep its own copy of this
+# file. A second copy of a Dockerfile is how the two of them silently diverge.
+ARG CI_BASE_IMAGE=ghcr.io/brefwiz/ci-base
 
-FROM ghcr.io/brefwiz/ci-base:${CI_BASE_TAG}
+FROM ${CI_BASE_IMAGE}:${CI_BASE_TAG}
 
 ARG RUST_VERSION
 # Re-declared in-stage on purpose: an ARG defined only before FROM expands to
