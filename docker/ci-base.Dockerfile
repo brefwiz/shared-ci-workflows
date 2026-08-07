@@ -11,7 +11,7 @@
 #   - kubectl, helm, helmfile, k3d
 #   - nats-server
 #   - buf (protobuf linter / breaking-change detector)
-#   - @redocly/cli, jscpd (npm global)
+#   - @redocly/cli, jscpd, typescript (npm global)
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
@@ -45,6 +45,19 @@ ARG RELEASE_PLEASE_VERSION=17.10.2
 ARG JSCPD_VERSION=5.0.14
 ARG TREE_SITTER_VERSION=0.26.0
 ARG TREE_SITTER_PACK_VERSION=1.14.1
+# tsc, for the TypeScript producer of the duplication gate's typed tier. That
+# tier links a construction to the ABSTRACTION it implements rather than to a
+# name, which is type information no syntax tree carries -- Rust reads it from
+# rustdoc JSON, TypeScript from the compiler's checker.
+#
+# 6.x deliberately, on both edges. Repos in this fleet declare typescript from
+# ^5.0.0 to ^6.0.0, and a producer older than the code it reads fails on syntax
+# rather than on content; 7.x is the native rewrite, whose JS compiler API is
+# not the mature surface this producer is written against. Pinned for the same
+# reason jscpd is: a checker that resolves types differently moves what the tier
+# sees, and an unpinned one would re-baseline every repo on whatever npm served
+# that minute.
+ARG TYPESCRIPT_VERSION=6.0.3
 
 # Base repository and digest are ARGs so the two lanes that build this file can
 # each reach it the cheapest way. The defaults are the public coordinates, so
@@ -111,12 +124,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Python CI script deps (pip) ────────────────────────────────────────────────
 # pyrefly not packaged in apt (young Rust-based type checker, pip/cargo only).
+#
+# The grammar check below loads every language the duplication gate has an
+# adapter for, not just rust. That gate reports per language, so a grammar
+# missing from the pack makes its language report nothing -- and nothing is
+# indistinguishable from clean. Verifying one grammar while shipping eleven is
+# how that reaches a repo unnoticed.
 RUN python3 -m pip install -q --break-system-packages \
       pyrefly \
       "tree-sitter==${TREE_SITTER_VERSION}" \
       "tree-sitter-language-pack==${TREE_SITTER_PACK_VERSION}" \
     && pyrefly --version \
-    && python3 -c "import tree_sitter_language_pack as p; p.get_parser('rust'); print('tree-sitter grammars ok')"
+    && python3 -c "import tree_sitter_language_pack as p; [p.get_parser(g) for g in ('rust','typescript','tsx','javascript','python','go','java','kotlin','swift','proto','sql')]; print('tree-sitter grammars ok')"
 
 # ── Zig (aarch64 musl cross-compilation via cargo-zigbuild) ───────────────────
 # Zig uses x86_64/aarch64 naming; map from dpkg's amd64/arm64.
@@ -140,9 +159,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && rm -rf /var/lib/apt/lists/* \
     && node --version && npm --version \
     && npm install -g @redocly/cli release-please@${RELEASE_PLEASE_VERSION} jscpd@${JSCPD_VERSION} \
+         typescript@${TYPESCRIPT_VERSION} \
     && redocly --version \
     && release-please --version \
-    && jscpd --version
+    && jscpd --version \
+    && tsc --version
 
 # ── openapi-generator-cli ──────────────────────────────────────────────────────
 RUN curl -fsSL \
