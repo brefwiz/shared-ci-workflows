@@ -14,6 +14,7 @@
 #   - gitleaks, osv-scanner (security scanners)
 #   - @redocly/cli, jscpd, typescript (npm global)
 #   - Python 3, Go (SDK generation utilities)
+#   - file (binary format inspection)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
 #   - Zig (used by cargo-zigbuild for reliable musl cross-compilation)
@@ -124,13 +125,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
     protobuf-compiler libprotobuf-dev \
     # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
-    ca-certificates curl git make cmake jq rsync tar xz-utils zstd openssh-client \
+    ca-certificates curl file git make cmake jq rsync tar xz-utils zstd openssh-client \
     # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
     python3 python3-pip python3-venv python3-yaml python3-jsonschema python3-pydantic python3-pytest python3-pytest-xdist \
     # Java 21 (openapi-generator-cli)
     openjdk-21-jdk-headless \
     # Go (SDK generation utilities)
     golang-go \
+    && file --version | grep -Eq '^file-[0-9]+([.][0-9]+)+$' \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python CI script deps (pip) ────────────────────────────────────────────────
