@@ -50,14 +50,14 @@ ARG TREE_SITTER_PACK_VERSION=1.14.1
 # name, which is type information no syntax tree carries -- Rust reads it from
 # rustdoc JSON, TypeScript from the compiler's checker.
 #
-# 6.x deliberately, on both edges. Repos in this fleet declare typescript from
-# ^5.0.0 to ^6.0.0, and a producer older than the code it reads fails on syntax
-# rather than on content; 7.x is the native rewrite, whose JS compiler API is
-# not the mature surface this producer is written against. Pinned for the same
-# reason jscpd is: a checker that resolves types differently moves what the tier
-# sees, and an unpinned one would re-baseline every repo on whatever npm served
-# that minute.
-ARG TYPESCRIPT_VERSION=6.0.3
+# 7.x, and pinned exactly. 7 is this platform's floor, and it is also the only
+# line that carries the surface this producer reads: the checker is reached
+# through the package's `unstable/sync` entrypoint, which 6.x does not export at
+# all -- a 6.x image would not give the producer a slower or older checker, it
+# would give it none. Pinned for the same reason jscpd is: a checker that
+# resolves types differently moves what the tier sees, and an unpinned one would
+# re-baseline every repo on whatever npm served that minute.
+ARG TYPESCRIPT_VERSION=7.0.2
 
 # Base repository and digest are ARGs so the two lanes that build this file can
 # each reach it the cheapest way. The defaults are the public coordinates, so
@@ -92,6 +92,12 @@ ARG RELEASE_PLEASE_VERSION
 ARG JSCPD_VERSION
 ARG TREE_SITTER_VERSION
 ARG TREE_SITTER_PACK_VERSION
+# Re-declared in-stage on purpose: an ARG defined only before FROM expands to
+# EMPTY inside the build stage. `npm install -g typescript@` does not fail on
+# the empty spec the way rustup does -- npm reads it as `latest` and installs
+# it, so the pin above silently stops being a pin and the image tracks whatever
+# npm published that day.
+ARG TYPESCRIPT_VERSION
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -164,6 +170,40 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && release-please --version \
     && jscpd --version \
     && tsc --version
+
+# ── tsc: pin assertion + native compiler resolution ───────────────────────────
+# `tsc --version` above proves the install ran. Neither of the two ways this
+# breaks for the producer would fail it, and both surface only in a consumer job.
+#
+# Drift: the version has to be the pinned one, not whatever the registry served
+# at build time -- the tier's finding count is part of its contract. Assert the
+# string rather than echo it, as the protoc plugin below does. The empty-value
+# guard comes first because an empty pin would otherwise pass this assert: npm
+# reads `typescript@` as latest, and `grep -F ""` matches every line.
+#
+# Missing native compiler: 7.x ships the compiler itself as per-arch optional
+# dependencies (@typescript/typescript-linux-x64 and siblings). npm omits an
+# optional dependency it cannot install WITHOUT failing the install, which
+# leaves a package that imports fine and has nothing behind it. `tsc` resolves
+# that package and execs the binary, so a version it prints for THIS arch is
+# proof the native compiler is present and runs.
+#
+# The producer does not use the `tsc` bin. It resolves the package through
+# NODE_PATH from a directory with no node_modules of its own, and reaches the
+# checker as ESM-through-require of an entrypoint the package exposes only via
+# its exports map -- a resolution path the bin never exercises. npm's global
+# root here is /usr/lib/node_modules (NodeSource sets prefix=/usr), which is why
+# NODE_PATH names it first.
+RUN set -eux; \
+    : "${TYPESCRIPT_VERSION:?not set in-stage, so the pin is not in effect}"; \
+    reported="$(tsc --version)"; \
+    if ! printf '%s\n' "${reported}" | grep -qwF -- "${TYPESCRIPT_VERSION}"; then \
+      echo "typescript: expected ${TYPESCRIPT_VERSION}, got '${reported}'" >&2; \
+      exit 1; \
+    fi; \
+    cd /tmp; \
+    NODE_PATH=/usr/lib/node_modules:/usr/local/lib/node_modules \
+      node -e 'require("typescript/unstable/sync"); console.log("typescript " + require("typescript").version + " checker resolves via NODE_PATH on " + process.arch)'
 
 # ── openapi-generator-cli ──────────────────────────────────────────────────────
 RUN curl -fsSL \
