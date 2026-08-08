@@ -2,7 +2,7 @@
 # ========================
 # System tools shared by all CI jobs. Intentionally excludes Rust.
 # Rebuild this layer when: Node, Java, openapi-generator, kubectl,
-# helm, helmfile, k3d, nats, redocly, or Zig versions change.
+# helm, helmfile, k3d, nats, security scanner, redocly, or Zig versions change.
 #
 # Included tooling:
 #   - Node.js (LTS)
@@ -11,6 +11,7 @@
 #   - kubectl, helm, helmfile, k3d
 #   - nats-server
 #   - buf (protobuf linter / breaking-change detector)
+#   - gitleaks, osv-scanner (security scanners)
 #   - @redocly/cli, jscpd, typescript (npm global)
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
@@ -29,6 +30,8 @@ ARG HELM_VERSION=4.1.3
 ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
+ARG GITLEAKS_VERSION=v8.30.1
+ARG OSV_SCANNER_VERSION=v2.4.0
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
 # release-please: manifest-first, PR-based release automation for every
 # non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
@@ -87,6 +90,8 @@ ARG HELM_VERSION
 ARG HELMFILE_VERSION
 ARG NATS_VERSION
 ARG BUF_VERSION
+ARG GITLEAKS_VERSION
+ARG OSV_SCANNER_VERSION
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
 ARG RELEASE_PLEASE_VERSION
 ARG JSCPD_VERSION
@@ -256,6 +261,59 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && docker --version \
     && docker buildx version \
     && docker compose version
+
+# ── Security scanners ─────────────────────────────────────────────────────────
+# Upstream asset names differ: gitleaks calls amd64 x64, while osv-scanner uses
+# the dpkg names. Keep both mappings explicit so an unsupported builder cannot
+# silently select an asset for another architecture.
+RUN set -eux; \
+    dpkg_arch="$(dpkg --print-architecture)"; \
+    case "${dpkg_arch}" in \
+      amd64) gitleaks_arch="x64";   osv_arch="amd64" ;; \
+      arm64) gitleaks_arch="arm64"; osv_arch="arm64" ;; \
+      *) echo "Unsupported arch: ${dpkg_arch}" >&2; exit 1 ;; \
+    esac; \
+    gitleaks_release="${GITLEAKS_VERSION#v}"; \
+    gitleaks_asset="gitleaks_${gitleaks_release}_linux_${gitleaks_arch}.tar.gz"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/${gitleaks_asset}" \
+      -o "/tmp/${gitleaks_asset}"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${gitleaks_release}_checksums.txt" \
+      -o /tmp/gitleaks_checksums.txt; \
+    awk -v asset="${gitleaks_asset}" '$2 == asset { print }' \
+      /tmp/gitleaks_checksums.txt > /tmp/gitleaks.sha256; \
+    test "$(wc -l < /tmp/gitleaks.sha256)" -eq 1; \
+    (cd /tmp && sha256sum --check gitleaks.sha256); \
+    tar -xzf "/tmp/${gitleaks_asset}" -C /usr/local/bin gitleaks; \
+    osv_asset="osv-scanner_linux_${osv_arch}"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/${osv_asset}" \
+      -o "/tmp/${osv_asset}"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_SHA256SUMS" \
+      -o /tmp/osv-scanner_SHA256SUMS; \
+    awk -v asset="${osv_asset}" '$2 == asset { print }' \
+      /tmp/osv-scanner_SHA256SUMS > /tmp/osv-scanner.sha256; \
+    test "$(wc -l < /tmp/osv-scanner.sha256)" -eq 1; \
+    (cd /tmp && sha256sum --check osv-scanner.sha256); \
+    install -m 0755 "/tmp/${osv_asset}" /usr/local/bin/osv-scanner; \
+    rm -f "/tmp/${gitleaks_asset}" /tmp/gitleaks_checksums.txt \
+      /tmp/gitleaks.sha256 "/tmp/${osv_asset}" \
+      /tmp/osv-scanner_SHA256SUMS /tmp/osv-scanner.sha256; \
+    gitleaks_expected="${GITLEAKS_VERSION#v}"; \
+    gitleaks_reported="$(gitleaks version)"; \
+    if [ "${gitleaks_reported}" != "${gitleaks_expected}" ]; then \
+      echo "gitleaks: expected ${gitleaks_expected}, got '${gitleaks_reported}'" >&2; \
+      exit 1; \
+    fi; \
+    osv_expected="${OSV_SCANNER_VERSION#v}"; \
+    osv_reported="$(osv-scanner --version)"; \
+    if ! printf '%s\n' "${osv_reported}" \
+         | grep -qxF -- "osv-scanner version: ${osv_expected}"; then \
+      echo "osv-scanner: expected ${osv_expected}, got '${osv_reported}'" >&2; \
+      exit 1; \
+    fi
 
 # ── musl strip aliases ────────────────────────────────────────────────────────
 # aarch64-linux-gnu-strip (from gcc-aarch64-linux-gnu) strips musl ELF identically
