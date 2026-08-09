@@ -13,6 +13,7 @@
 #   - cargo-nextest, cargo-llvm-cov, cargo-audit, cargo-deny, cargo-hack, sqlx-cli,
 #     sccache, cargo-zigbuild, wasm-pack (pre-built via binstall)
 #   - cargo-vuln-policy-validator, api-bones-sdk-gen (private; compiled from source)
+#   - cosign, syft (release signing, SBOM, and provenance)
 
 ARG RUST_VERSION=1.94.1
 # Nightly exists solely so the duplication gate can emit rustdoc JSON, which is
@@ -42,6 +43,8 @@ ARG WASM_PACK_VERSION=0.13.1
 # release-plz-bump.py clone, which had a non-atomic commit/tag/publish
 # sequence (see "unified fleet release engine" design).
 ARG RELEASE_PLZ_VERSION=0.3.159
+ARG COSIGN_VERSION=3.1.1
+ARG SYFT_VERSION=1.44.0
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO=https://github.com/brefwiz/cargo-vuln-policy-validator
 ARG CARGO_VULN_POLICY_VALIDATOR_REF=main
 ARG CI_BASE_TAG=latest
@@ -73,6 +76,8 @@ ARG CARGO_ZIGBUILD_VERSION
 ARG CARGO_SWEEP_VERSION
 ARG WASM_PACK_VERSION
 ARG RELEASE_PLZ_VERSION
+ARG COSIGN_VERSION
+ARG SYFT_VERSION
 ARG CARGO_VULN_POLICY_VALIDATOR_REPO
 ARG CARGO_VULN_POLICY_VALIDATOR_REF
 ARG API_BONES_SDK_GEN_VERSION
@@ -135,6 +140,36 @@ RUN cargo binstall --no-confirm --locked \
     && sqlx --version \
     && wasm-pack --version \
     && release-plz --version
+
+# Release signing tools are platform-owned. Baking pinned, checksum-verified
+# binaries avoids downloading and installing them in every release worker.
+RUN set -eux; \
+    ARCH="$(dpkg --print-architecture)"; \
+    tool_dir="$(mktemp -d)"; \
+    cosign_name="cosign-linux-${ARCH}"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign_checksums.txt" \
+      -o "${tool_dir}/cosign-checksums.txt"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/${cosign_name}" \
+      -o "${tool_dir}/${cosign_name}"; \
+    grep "  ${cosign_name}$" "${tool_dir}/cosign-checksums.txt" \
+      | (cd "${tool_dir}" && sha256sum -c -); \
+    install -m 0755 "${tool_dir}/${cosign_name}" /usr/local/bin/cosign; \
+    syft_name="syft_${SYFT_VERSION}_linux_${ARCH}.tar.gz"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" \
+      -o "${tool_dir}/syft-checksums.txt"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/${syft_name}" \
+      -o "${tool_dir}/${syft_name}"; \
+    grep "  ${syft_name}$" "${tool_dir}/syft-checksums.txt" \
+      | (cd "${tool_dir}" && sha256sum -c -); \
+    tar -xzf "${tool_dir}/${syft_name}" -C "${tool_dir}" syft; \
+    install -m 0755 "${tool_dir}/syft" /usr/local/bin/syft; \
+    rm -rf "${tool_dir}"; \
+    cosign version; \
+    syft version
 
 # ── Private cargo tools (must compile from source) ────────────────────────────
 RUN cargo install cargo-vuln-policy-validator \
