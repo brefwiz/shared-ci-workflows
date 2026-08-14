@@ -1,7 +1,8 @@
 name: Release npm package(s) (reusable)
 
 # Publishes one or more npm packages to GitHub Packages and optionally
-# mirrors to npmjs.com.  Called by downstream repos on tag push.
+# mirrors to npmjs.com and/or the private Gitea registry.  Called by
+# downstream repos on tag push.
 #
 # Usage:
 #
@@ -36,9 +37,28 @@ on:
           Also publish to npmjs.com.  Requires the npm-token secret.
         type: boolean
         default: false
+      mirror-gitea:
+        description: >
+          Also publish to the private Gitea registry.  Requires the
+          gitea-token secret.
+
+          Needed whenever a package under the @brefwiz scope is consumed by a
+          repo that resolves that scope from Gitea.  npm routes per SCOPE, not
+          per package, so a consumer cannot draw @brefwiz/core-ui from Gitea
+          and @brefwiz/api-bones-connect from GitHub Packages — it resolves the
+          whole scope from one registry.  A package published to only one of
+          them is therefore unreachable from consumers pointed at the other,
+          and the failure surfaces as a bare 404 that reads like the package
+          does not exist.
+        type: boolean
+        default: false
     secrets:
       npm-token:
         description: npmjs.com token (required only when mirror-npmjs is true)
+        required: false
+      gitea-token:
+        description: >
+          Gitea packages write token (required only when mirror-gitea is true)
         required: false
 
 jobs:
@@ -94,5 +114,44 @@ jobs:
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
             npm publish --access public
+            cd ..
+          done
+
+      - name: Mirror to Gitea
+        if: ${{ inputs.mirror-gitea }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.gitea-token }}
+          # Same registry constant as ci-workflows' cilib/npm_registry.py.
+          GITEA_REGISTRY: https://git.brefwiz.com/api/packages/brefwiz/npm/
+        run: |
+          # Without pipefail the `npm publish | tee` below reports tee's status,
+          # so a failed publish would look successful and the conflict branch
+          # would never run.
+          set -o pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::mirror-gitea is enabled but the gitea-token secret is empty"
+            exit 1
+          fi
+          echo "//git.brefwiz.com/api/packages/brefwiz/npm/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          for PKG_DIR in ${{ inputs.packages }}; do
+            echo "==> Mirroring ${PKG_DIR} to Gitea"
+            cd "${PKG_DIR}"
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.publishConfig = { registry: process.env.GITEA_REGISTRY };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            # Republishing an existing version is the normal case when back-
+            # filling a package that only ever reached GitHub Packages, so a
+            # duplicate must not fail the release.
+            if npm publish --access public 2>&1 | tee /tmp/gitea-publish.log; then
+              echo "published ${PKG_DIR} to Gitea"
+            elif grep -qiE "already exists|EPUBLISHCONFLICT|409" /tmp/gitea-publish.log; then
+              echo "${PKG_DIR} already present on Gitea at this version — nothing to do"
+            else
+              echo "::error::failed to mirror ${PKG_DIR} to Gitea"
+              exit 1
+            fi
             cd ..
           done
