@@ -36,9 +36,33 @@ on:
           Also publish to npmjs.com.  Requires the npm-token secret.
         type: boolean
         default: false
+      mirror-gitea:
+        description: >
+          Also publish to the internal Gitea npm registry.  Requires the
+          gitea-token secret.
+
+          Needed when a package published here is a DEPENDENCY of a package
+          published to Gitea.  npm and pnpm select a registry per scope, not per
+          package, so a consumer whose @brefwiz scope points at Gitea cannot
+          reach a dependency that exists only on GitHub Packages — it 404s on
+          resolution even with valid credentials for both hosts.  Publishing to
+          both makes the package reachable whichever way a consumer's scope is
+          pointed.
+        type: boolean
+        default: false
+      gitea-registry:
+        description: Internal Gitea npm registry URL.
+        type: string
+        default: https://git.brefwiz.com/api/packages/brefwiz/npm/
     secrets:
       npm-token:
         description: npmjs.com token (required only when mirror-npmjs is true)
+        required: false
+      gitea-token:
+        description: >
+          Gitea package-write token (required only when mirror-gitea is true).
+          A Gitea access token carries package scopes across package types, so
+          this is not the crates.io token used by release-rust.
         required: false
 
 jobs:
@@ -74,6 +98,38 @@ jobs:
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
             npm publish --access public
+            cd ..
+          done
+
+      - name: Mirror to Gitea
+        if: ${{ inputs.mirror-gitea }}
+        env:
+          GITEA_TOKEN: ${{ secrets.gitea-token }}
+          GITEA_REGISTRY: ${{ inputs.gitea-registry }}
+        run: |
+          if [ -z "${GITEA_TOKEN}" ]; then
+            echo "::error::mirror-gitea is set but the gitea-token secret is empty"
+            exit 1
+          fi
+          # Host-scoped auth line, matching the registry this step publishes to.
+          GITEA_HOST=$(echo "${GITEA_REGISTRY}" | sed 's|https\?://||; s|/$||')
+          echo "//${GITEA_HOST}/:_authToken=${GITEA_TOKEN}" > ~/.npmrc
+          for PKG_DIR in ${{ inputs.packages }}; do
+            echo "==> Mirroring ${PKG_DIR} to Gitea"
+            cd "${PKG_DIR}"
+            PKG_REGISTRY="${GITEA_REGISTRY}" node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.publishConfig = { registry: process.env.PKG_REGISTRY };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            # Republishing an existing version is the normal case when a package
+            # gains this mirror after it was first released; that is a success
+            # for our purposes, not a failure to publish.
+            if ! npm publish --access public 2>&1 | tee /tmp/gitea-publish.log; then
+              grep -qiE 'already exists|EPUBLISHCONFLICT|409' /tmp/gitea-publish.log || exit 1
+              echo "==> ${PKG_DIR} already present on Gitea at this version; leaving it"
+            fi
             cd ..
           done
 
