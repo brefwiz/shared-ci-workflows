@@ -36,9 +36,27 @@ on:
           Also publish to npmjs.com.  Requires the npm-token secret.
         type: boolean
         default: false
+      mirror-gitea:
+        description: >
+          Also publish to the brefwiz Gitea registry.  Requires the
+          gitea-token secret.
+
+          Enable this for any package that a Gitea-published @brefwiz package
+          depends on at runtime.  Consumers map the whole @brefwiz scope to a
+          single registry — npm has no per-package registry override — so a
+          Gitea package depending on a GitHub-Packages-only one cannot be
+          installed by anyone: the dependency 404s no matter which registry
+          the consumer picks.
+        type: boolean
+        default: false
     secrets:
       npm-token:
         description: npmjs.com token (required only when mirror-npmjs is true)
+        required: false
+      gitea-token:
+        description: >
+          brefwiz Gitea packages token with write access (required only when
+          mirror-gitea is true)
         required: false
 
 jobs:
@@ -94,5 +112,42 @@ jobs:
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
             npm publish --access public
+            cd ..
+          done
+
+      - name: Mirror to brefwiz Gitea registry
+        if: ${{ inputs.mirror-gitea }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.gitea-token }}
+        run: |
+          set -euo pipefail
+          [ -n "${NODE_AUTH_TOKEN}" ] || {
+            echo "::error::mirror-gitea is enabled but the gitea-token secret is empty"
+            exit 1
+          }
+          GITEA_REGISTRY="https://git.brefwiz.com/api/packages/brefwiz/npm/"
+          # Switch auth to Gitea for the mirror publish
+          echo "//git.brefwiz.com/api/packages/brefwiz/npm/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          for PKG_DIR in ${{ inputs.packages }}; do
+            echo "==> Mirroring ${PKG_DIR} to ${GITEA_REGISTRY}"
+            cd "${PKG_DIR}"
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.publishConfig = { registry: '${GITEA_REGISTRY}' };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            # A re-run over an already-mirrored version must not fail the
+            # release: the GitHub Packages publish above is the authoritative
+            # one, and this mirror is idempotent by intent.
+            if ! npm publish --access public 2>publish.err; then
+              if grep -qiE "409|already exists|cannot publish over" publish.err; then
+                echo "==> ${PKG_DIR} already present at this version — mirror is up to date"
+              else
+                cat publish.err >&2
+                exit 1
+              fi
+            fi
+            rm -f publish.err
             cd ..
           done
