@@ -87,6 +87,20 @@ jobs:
           cache-from: type=gha,scope=ci-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=ci-${{ matrix.arch }}
 
+      - name: Prove rust-src offline on exact per-commit image
+        if: github.event_name != 'workflow_dispatch' || inputs.push
+        run: |
+          set -euo pipefail
+          image="${CI_IMAGE}:sha-${{ steps.sha.outputs.short }}-${{ matrix.arch }}"
+          docker pull "$image"
+          docker run --rm --network=none "$image" bash -ceu '
+            sysroot="$(rustc --print sysroot)"
+            for crate in core alloc std; do
+              src="${sysroot}/lib/rustlib/src/rust/library/${crate}/src/lib.rs"
+              test -s "$src"
+            done
+          '
+
   # Stitch per-arch images into a single multi-arch manifest under the
   # canonical tags (latest, sha-<short>).
   manifest:

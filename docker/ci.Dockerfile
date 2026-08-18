@@ -6,7 +6,7 @@
 # pick up the new base automatically on next push to main.
 #
 # Added tooling (on top of ci-base):
-#   - Rust stable (rustfmt, clippy, llvm-tools-preview)
+#   - Rust stable (rustfmt, clippy, llvm-tools-preview, rust-src)
 #   - Fast linker: mold + clang (already in base, wired up here)
 #   - pinned nightly (rustdoc JSON for the duplication gate; nightly-only)
 #   - cargo-binstall (installs pre-built binaries; avoids recompilation)
@@ -95,11 +95,15 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
       --no-modify-path \
       --profile minimal \
       --default-toolchain ${RUST_VERSION} \
-    && rustup component add rustfmt clippy llvm-tools-preview \
+    && rustup component add rustfmt clippy llvm-tools-preview rust-src \
     && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl wasm32-unknown-unknown \
     && rustup toolchain install ${RUST_NIGHTLY} --profile minimal \
     && rustc --version && cargo --version \
-    && rustc +${RUST_NIGHTLY} --version
+    && rustc +${RUST_NIGHTLY} --version \
+    && sysroot="$(rustc --print sysroot)" \
+    && test -s "${sysroot}/lib/rustlib/src/rust/library/core/src/lib.rs" \
+    && test -s "${sysroot}/lib/rustlib/src/rust/library/alloc/src/lib.rs" \
+    && test -s "${sysroot}/lib/rustlib/src/rust/library/std/src/lib.rs"
 
 # ── cargo-binstall ─────────────────────────────────────────────────────────────
 # Installs pre-built binaries from GitHub releases; avoids compiling from source.
