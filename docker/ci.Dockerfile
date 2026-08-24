@@ -15,7 +15,7 @@
 #   - cargo-vuln-policy-validator, api-bones-sdk-gen (private; compiled from source)
 #   - cosign, syft (release signing, SBOM, and provenance)
 
-ARG RUST_VERSION=1.94.1
+ARG RUST_VERSION=1.98.0
 # Nightly exists solely so the duplication gate can emit rustdoc JSON, which is
 # still nightly-only. PINNED to a date, not floating `nightly`: the JSON carries
 # a format_version that changes between nightlies, and a silent bump would move
@@ -203,7 +203,7 @@ ENV CARGO_TERM_COLOR=always \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=30G \
     SCCACHE_IDLE_TIMEOUT=0 \
-    RUSTUP_TOOLCHAIN=1.94.1 \
+    RUSTUP_TOOLCHAIN=1.98.0 \
     AR_aarch64_unknown_linux_musl=llvm-ar \
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
     CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc \
