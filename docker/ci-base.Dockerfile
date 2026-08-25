@@ -336,7 +336,12 @@ RUN ln -s /usr/bin/aarch64-linux-gnu-strip /usr/local/bin/aarch64-linux-musl-str
 # -march=* flags from crate build scripts (ring, aws-lc-sys, zstd-sys) use GCC
 # arch names (e.g. armv8.4-a) that Zig's CC frontend does not recognise. Strip
 # them: the target triple already encodes the architecture for Zig.
-RUN printf '#!/bin/bash\nargs=()\nfor a in "$@"; do\n  [[ "$a" == --target=* ]] && continue\n  [[ "$a" == -march=* ]]   && continue\n  args+=("$a")\ndone\nexec zig cc -target aarch64-linux-musl "${args[@]}"\n' \
+# rustc 1.98.0 started passing -Wl,--fix-cortex-a53-843419 by default when
+# linking aarch64-unknown-linux-musl (a GNU ld erratum-workaround flag). Zig's
+# cc frontend does not implement it and hard-errors ("unsupported linker arg")
+# rather than ignoring it, which broke every aarch64 musl link on the bump —
+# strip it too, same as --target=/-march=.
+RUN printf '#!/bin/bash\nargs=()\nfor a in "$@"; do\n  [[ "$a" == --target=* ]] && continue\n  [[ "$a" == -march=* ]]   && continue\n  [[ "$a" == -Wl,--fix-cortex-a53-843419 ]] && continue\n  args+=("$a")\ndone\nexec zig cc -target aarch64-linux-musl "${args[@]}"\n' \
       > /usr/local/bin/aarch64-linux-musl-gcc \
     && chmod +x /usr/local/bin/aarch64-linux-musl-gcc \
     && aarch64-linux-musl-gcc --version
