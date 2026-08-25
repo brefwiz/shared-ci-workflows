@@ -101,6 +101,15 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
     && rustc --version && cargo --version \
     && rustc +${RUST_NIGHTLY} --version
 
+# Zig remains the musl C compiler used by cc-rs. Rust final links use Clang as
+# driver and LLD as linker so target erratum workarounds reach an implementation
+# that supports them. Rust supplies self-contained musl CRT/libc; prevent Clang
+# from adding another set of start files.
+RUN printf '#!/bin/sh\nexec clang --target=aarch64-unknown-linux-musl -fuse-ld=lld -nostartfiles "$@"\n' \
+      > /usr/local/bin/aarch64-linux-musl-rust-clang \
+    && chmod +x /usr/local/bin/aarch64-linux-musl-rust-clang \
+    && ld.lld --version
+
 # ── cargo-binstall ─────────────────────────────────────────────────────────────
 # Installs pre-built binaries from GitHub releases; avoids compiling from source.
 RUN ARCH=$(dpkg --print-architecture) \
@@ -197,7 +206,8 @@ ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0 \
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang \
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=clang \
-    RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     RUST_BACKTRACE=1 \
     SQLX_OFFLINE=true \
     SCCACHE_DIR=/var/cache/sccache \
@@ -205,13 +215,8 @@ ENV CARGO_TERM_COLOR=always \
     SCCACHE_IDLE_TIMEOUT=0 \
     RUSTUP_TOOLCHAIN=1.98.0 \
     AR_aarch64_unknown_linux_musl=llvm-ar \
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc \
-    CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc \
-    # zig cc (our musl-gcc wrapper) provides its own crt1.o; rustc's
-    # self-contained crt also ships crt1.o for aarch64-unknown-linux-musl,
-    # causing duplicate `_start` at link time. Tell rustc to skip its
-    # self-contained linker components for this target — zig owns crt.
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=no"
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-rust-clang \
+    CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
 
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
