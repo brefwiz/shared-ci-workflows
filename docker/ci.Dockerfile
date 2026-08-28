@@ -88,7 +88,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN mkdir -p /usr/local/cargo /usr/local/rustup \
-    && chmod -R a+rwX /usr/local/cargo /usr/local/rustup
+    && chown root:root /usr/local/cargo /usr/local/rustup \
+    && chmod 0755 /usr/local/cargo /usr/local/rustup
 
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- \
       -y \
@@ -213,8 +214,23 @@ ENV CARGO_TERM_COLOR=always \
     # self-contained linker components for this target — zig owns crt.
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=no"
 
-# ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
-RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
+# Runtime Cargo state is separate from immutable tool binaries and rustup data.
+# Non-root jobs can resolve and build dependencies without gaining write access
+# to executable search paths or installed toolchains.
+RUN mkdir -p /var/cache/brefwiz/cargo-home \
+    && chown root:root /var/cache/brefwiz/cargo-home \
+    && chmod 1777 /var/cache/brefwiz/cargo-home \
+    && chown -R root:root /usr/local/cargo /usr/local/rustup \
+    && chmod -R go-w /usr/local/cargo /usr/local/rustup \
+    && if find /usr/local/cargo /usr/local/rustup -xdev \
+         \( ! -user root -o ! -group root \
+            -o \( ! -type l -a -perm /022 \) \) \
+         -print -quit | grep -q .; then \
+         echo "Rust toolchain ownership or mode is mutable" >&2; \
+         exit 1; \
+       fi
+
+ENV CARGO_HOME=/var/cache/brefwiz/cargo-home
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci" \
