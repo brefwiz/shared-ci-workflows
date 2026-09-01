@@ -14,7 +14,8 @@
 #   - @redocly/cli, jscpd, typescript (npm global)
 #   - Python 3, Go (SDK generation utilities)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
-#   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
+#   - Podman remote client + podman-docker (`docker`) + Compose v2 (engine runs
+#     in the Pod-local Podman sidecar; its socket is published to the job)
 #   - Zig (used by cargo-zigbuild for reliable musl cross-compilation)
 #   - aarch64-linux-musl-strip, x86_64-linux-musl-strip (symlink aliases for strip)
 #
@@ -239,23 +240,95 @@ RUN ARCH=$(dpkg --print-architecture) \
 RUN curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash \
     && k3d version
 
-# ── Docker CLI + buildx plugin ────────────────────────────────────────────────
-# CLI only — the docker daemon runs on the runner host. CI jobs that need
-# docker-build/docker-push mount /var/run/docker.sock into the container.
-RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg \
-       -o /etc/apt/keyrings/docker.asc \
-    && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-        https://download.docker.com/linux/debian trixie stable" \
-        > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
+# ── Podman remote client + Compose ────────────────────────────────────────────
+# Client only. Container work happens in the Pod-local Podman sidecar, whose
+# socket the worker models publish to the job. Nothing here talks to a Docker
+# daemon, and nothing here builds images: buildah does that, driven by
+# buildah-image-build.sh under the image-build-multi-arch action, and a
+# canonical check bans BuildKit invocations fleet-wide — so buildx is gone and
+# no line below verifies it. Verifying `docker buildx version`, as this layer
+# did, advertised the one builder the platform forbids.
+#
+# Everything comes from the pinned Debian archive, so the third-party apt
+# keyring and sources.list.d entry this layer used to add are gone too: one
+# fewer signing key and one fewer network dependency per build.
+#
+# Remote is reached by environment, not by config here. Podman flips itself to
+# remote mode when CONTAINER_HOST is set, which the worker models already
+# export (alongside DOCKER_HOST, for Docker-API clients such as testcontainers).
+# Measured in this base: with CONTAINER_HOST unset an unprivileged `podman ps`
+# dies at the rootless re-exec with "cannot clone: Operation not permitted";
+# with it set the same call reaches the socket and fails only on connect. That
+# is also why none of podman's runtime recommends (crun, netavark, passt,
+# uidmap, containers-storage) are installed — a remote client runs no
+# containers locally. Restating the contract here as `remote = true` would put
+# the same decision in a second place, so it stays on the worker models.
+#
+# podman-docker supplies /usr/bin/docker as a two-line exec wrapper onto
+# podman, which is what keeps every caller that still spells `docker` working.
+# Debian makes the swap total rather than additive: podman-docker Conflicts
+# docker-ce-cli, the package this layer used to install.
+#
+# docker-compose is Debian's Compose v2 binary, not a Docker client — its only
+# Depends is libc6 — and it is the provider Debian itself pairs with podman:
+# podman-docker Recommends docker-compose. Compose stays because production
+# uses it (the e2e-compose-orchestrate action and the repos it orchestrates).
+# --no-install-recommends is load-bearing on this line rather than hygiene:
+# docker-compose Recommends docker-cli, which podman-docker Conflicts with, so
+# pulling recommends makes the transaction unresolvable.
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        docker-ce-cli docker-buildx-plugin docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/* \
-    && docker --version \
-    && docker buildx version \
-    && docker compose version
+        podman podman-docker docker-compose \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Podman config + verification ──────────────────────────────────────────────
+# Configuring and asserting in one layer is deliberate: the provider name is a
+# shell variable written into the drop-in and resolved from that same variable,
+# so the pin and the thing verified cannot drift into naming two binaries.
+#
+# /etc/containers/nodocker: without it the podman-docker wrapper prints
+# "Emulate Docker CLI using podman..." to stderr on EVERY `docker` call. Not
+# just log noise — callers that capture combined output (`out=$(docker … 2>&1)`)
+# would fold the banner into the value they parse.
+#
+# compose_providers is pinned even though podman's built-in default already
+# lists docker-compose first. Podman resolves the provider by PATH lookup at
+# call time, so a future default that reordered or dropped the name would
+# surface as a broken compose step in a consumer job and never here.
+#
+# What is asserted, and how each would otherwise fail downstream: podman runs
+# at all; `docker` resolves to podman rather than to a leftover Docker CLI;
+# the shim banner is silenced; podman parses the drop-in (`system connection
+# list` is the cheapest command that reads containers.conf.d and needs no
+# socket, and a malformed drop-in fails it outright); the pinned provider is on
+# PATH and is Compose v2 rather than the retired v1.
+#
+# `podman compose` itself is deliberately NOT exercised: it pings the podman
+# socket before dispatching to the provider, so even `podman compose --help`
+# fails inside a build with "unable to connect to Podman socket". That path is
+# proven by the sidecar at job time; a build can only prove its local half.
+RUN set -eux; \
+    provider=docker-compose; \
+    conf=/etc/containers/containers.conf.d/10-compose-provider.conf; \
+    touch /etc/containers/nodocker; \
+    mkdir -p /etc/containers/containers.conf.d; \
+    printf '[engine]\ncompose_providers=["%s"]\ncompose_warning_logs=false\n' \
+      "${provider}" > "${conf}"; \
+    podman --version; \
+    reported="$(docker --version 2>&1)"; \
+    case "${reported}" in \
+      *Emulate*) echo "docker shim banner not silenced: '${reported}'" >&2; exit 1 ;; \
+      *podman*) ;; \
+      *) echo "docker does not resolve to podman: '${reported}'" >&2; exit 1 ;; \
+    esac; \
+    podman system connection list > /dev/null; \
+    provider_path="$(command -v "${provider}")"; \
+    provider_version="$("${provider_path}" version --short)"; \
+    case "${provider_version}" in \
+      2.*) ;; \
+      *) echo "compose provider ${provider} is ${provider_version}, expected v2" >&2; exit 1 ;; \
+    esac; \
+    echo "podman remote client + compose provider ${provider} -> ${provider_path} (v${provider_version})"
 
 # ── musl strip aliases ────────────────────────────────────────────────────────
 # aarch64-linux-gnu-strip (from gcc-aarch64-linux-gnu) strips musl ELF identically
