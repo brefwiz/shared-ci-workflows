@@ -1,7 +1,7 @@
 # ci-base — Base CI Image
 # ========================
 # System tools shared by all CI jobs. Intentionally excludes Rust.
-# Rebuild this layer when: Node, Java, openapi-generator, kubectl,
+# Rebuild this layer when: Node, pnpm, Java, openapi-generator, kubectl,
 # helm, helmfile, k3d, nats, security scanner, redocly, or Zig versions change.
 #
 # Included tooling:
@@ -13,6 +13,7 @@
 #   - buf (protobuf linter / breaking-change detector)
 #   - gitleaks, osv-scanner (security scanners)
 #   - @redocly/cli, jscpd, typescript (npm global)
+#   - pnpm (corepack-activated, pinned)
 #   - Python 3, Go (SDK generation utilities)
 #   - file (binary format inspection)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
@@ -24,6 +25,9 @@
 # $(dpkg --print-architecture) or equivalent arch detection at build time.
 
 ARG NODE_MAJOR=24
+# The pnpm every TypeScript job runs. Exact, not a bare major: corepack
+# resolves a range over the network, which is the fetch this bake removes.
+ARG PNPM_VERSION=9.15.9
 ARG ZIG_VERSION=0.14.0
 ARG OPENAPI_GENERATOR_VERSION=7.12.0
 ARG KUBECTL_VERSION=1.35.2
@@ -84,6 +88,7 @@ ARG DEBIAN_DIGEST=sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7
 FROM ${DEBIAN_IMAGE}:${DEBIAN_TAG}@${DEBIAN_DIGEST}
 
 ARG NODE_MAJOR
+ARG PNPM_VERSION
 ARG ZIG_VERSION
 ARG OPENAPI_GENERATOR_VERSION
 ARG KUBECTL_VERSION
@@ -167,6 +172,25 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) \
     && zig version
 
 # ── Node.js (via NodeSource) ───────────────────────────────────────────────────
+#
+# pnpm is baked here, beside node, rather than activated per job. Every CI job
+# that touches TypeScript ran `corepack enable && corepack prepare pnpm@9
+# --activate` first, which fetches the pnpm tarball from the registry on every
+# run -- 4.7s and one more network dependency per job, in every repo, measured
+# on quorumauth build-sdk-ts. It is also exactly what the ci-baked-tools
+# canonical check forbids for every other tool: the platform image owns pinned
+# tooling, and a job asserts it is present rather than installing it.
+#
+# COREPACK_HOME is pointed at a world-readable path and exported as ENV,
+# because that is where the activated version lives. Left at its default it
+# lands in the BUILD user's home, and a job running as any other user finds an
+# enabled shim with nothing behind it -- which "fails" by silently fetching
+# again, so the bake would look present and do nothing.
+#
+# `corepack enable ... pnpm` names pnpm on purpose: a bare `corepack enable`
+# also writes npm and yarn shims, and the npm shim would shadow the real npm
+# installed below. The last assertion is what keeps that true.
+ENV COREPACK_HOME=/usr/local/share/corepack
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -176,7 +200,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && redocly --version \
     && release-please --version \
     && jscpd --version \
-    && tsc --version
+    && tsc --version \
+    && corepack enable --install-directory /usr/local/bin pnpm \
+    && corepack prepare pnpm@${PNPM_VERSION} --activate \
+    && chmod -R a+rX "$COREPACK_HOME" \
+    && [ "$(pnpm --version)" = "${PNPM_VERSION}" ] \
+    && [ "$(command -v npm)" = /usr/bin/npm ]
 
 # ── tsc: pin assertion + native compiler resolution ───────────────────────────
 # `tsc --version` above proves the install ran. Neither of the two ways this
