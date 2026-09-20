@@ -1,0 +1,74 @@
+name: Validate CI images (PR)
+
+# Closes the gap where a Dockerfile edit merges to main unvalidated:
+# build-images.yml only triggers on push to main, so the first build of a
+# changed ci-base/ci ever run is the one that republishes `latest` for the
+# whole fleet. This builds and smoke-tests both images at PR time instead.
+#
+# Non-consumable by design, not by convention:
+#   - plain `docker build`, never `docker push` or buildx `--push` -- the
+#     job has no code path capable of publishing anything
+#   - no docker/login-action step anywhere in this workflow: the job never
+#     authenticates to GHCR, so even a future edit that added a push step
+#     would fail to authenticate rather than silently reach the registry
+#   - `permissions: contents: read` only -- no packages: write
+#   - both images stay local-daemon-only tags (`*:pr-validate`) that are
+#     never pushed and that no consumer's `FROM`/pull can resolve
+#
+# The `ci` build below consumes the `ci-base` image this same job just
+# built, straight out of the runner's local Docker daemon (both are
+# ordinary `docker build`, not buildx-with-a-separate-builder-container, so
+# the daemon's local image store is exactly where the second build's FROM
+# resolves from). That is what closes the gap a `workflow_dispatch`
+# dry-run can't: a dry-run builds ci-base without pushing it, so ci's
+# `FROM ghcr.io/.../ci-base:sha-...` can never resolve -- there is no
+# registry round-trip here for it to depend on.
+on:
+  pull_request:
+    paths:
+      - docker/ci-base.Dockerfile
+      - docker/ci.Dockerfile
+      - .github/workflows/validate-images.yml
+      - scripts/smoke-ci-images.sh
+
+jobs:
+  # Per-arch, native only -- same reasoning as build-images.yml: ci.Dockerfile
+  # compiles ~10 cargo tools from source, and QEMU-emulated arm64 for that
+  # exceeds sane job time. Native arm64 runner keeps this fast and honest.
+  validate:
+    name: Build & smoke ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ci-base (${{ matrix.arch }}, local only)
+        run: |
+          docker build \
+            -f docker/ci-base.Dockerfile \
+            -t ci-base:pr-validate \
+            .
+
+      - name: Smoke test ci-base (${{ matrix.arch }})
+        run: scripts/smoke-ci-images.sh ci-base:pr-validate base
+
+      - name: Build ci (${{ matrix.arch }}, extends the ci-base just built, local only)
+        run: |
+          docker build \
+            -f docker/ci.Dockerfile \
+            --build-arg CI_BASE_IMAGE=ci-base \
+            --build-arg CI_BASE_TAG=pr-validate \
+            -t ci:pr-validate \
+            .
+
+      - name: Smoke test ci (${{ matrix.arch }})
+        run: scripts/smoke-ci-images.sh ci:pr-validate full

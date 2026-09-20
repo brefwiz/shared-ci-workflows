@@ -52,6 +52,10 @@ touches a Dockerfile:
 
 Tags: `latest` (main branch) and `sha-<short>` (per-commit).
 
+A PR that touches either Dockerfile builds and smoke-tests both images
+(`.github/workflows/validate-images.yml`) before merge — local-daemon-only
+tags, never pushed, so a PR build can't move a tag any consumer resolves.
+
 ## Central security policies
 
 `policies/deny.toml`, `policies/audit.toml`, and `policies/exceptions.yaml`
