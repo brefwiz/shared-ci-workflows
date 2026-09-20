@@ -41,13 +41,13 @@ ARG OSV_SCANNER_VERSION=v2.4.0
 # than the `go` directive the fleet's newest module declares (cds: go
 # 1.25.5). A cold Pod with a toolchain older than a repo's go.mod directive
 # makes every `go`/`go install`/`go test` invocation download a matching
-# toolchain at run time via GOTOOLCHAIN=auto -- and when the local module
-# proxy misses, that download falls through (GOPROXY=...|direct) to go.dev
-# across the WAN and intermittently fails with a TLS/HTTP2 stream reset. Pin
-# an upstream tarball instead of an apt package so the image's Go version is
-# a stated fact, not a consequence of whatever Debian's archive happens to
-# carry -- and so it is always >= every go.mod directive in the fleet,
-# removing the run-time toolchain fetch entirely on a warm image.
+# toolchain at run time via GOTOOLCHAIN=auto, even against a healthy, fully
+# reachable local module proxy -- a real, recurring cold-start cost on every
+# such Pod. Pin an upstream tarball instead of an apt package so the image's
+# Go version is a stated fact, not a consequence of whatever Debian's
+# archive happens to carry -- and so it is always >= every go.mod directive
+# in the fleet, removing that run-time toolchain fetch entirely on a warm
+# image.
 ARG GO_VERSION=1.27.1
 ARG GO_SHA256_AMD64=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
 ARG GO_SHA256_ARM64=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
@@ -189,8 +189,8 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) \
 # ── Go (pinned upstream tarball) ──────────────────────────────────────────────
 # Replaces Debian's golang-go package: the distro archive lags the `go`
 # directive the fleet declares (see ARG comment above), which made every cold
-# Pod fetch a matching toolchain at run time -- and, on a module-proxy miss,
-# fall through to go.dev across the WAN. Pinning the tarball here makes the
+# Pod fetch a matching toolchain at run time, an avoidable cost regardless of
+# how reachable the module proxy is. Pinning the tarball here makes the
 # image's Go version >= every go.mod directive in the fleet, so GOTOOLCHAIN's
 # run-time fetch path is dead code on a warm image rather than the common case.
 #
