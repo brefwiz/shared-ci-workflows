@@ -48,6 +48,15 @@ ARG OSV_SCANNER_VERSION=v2.4.0
 # archive happens to carry -- and so it is always >= every go.mod directive
 # in the fleet, removing that run-time toolchain fetch entirely on a warm
 # image.
+#
+# Pinned to the current stable release (1.27.1), not to the fleet's highest
+# declared directive (cds: 1.25.5). Pinning at exactly the highest directive
+# in use today means the next repo that bumps its `go` line reintroduces the
+# very download this removes -- the image's version would rot the moment a
+# single consumer moves. A newer toolchain compiling an older module is
+# safe: the `go` directive in go.mod pins the module's *language semantics*,
+# not the toolchain build; go1.27.1 compiles a `go 1.25.5` module as 1.25.5.
+# Headroom here is free and buys margin against the next go.mod bump.
 ARG GO_VERSION=1.27.1
 ARG GO_SHA256_AMD64=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
 ARG GO_SHA256_ARM64=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
