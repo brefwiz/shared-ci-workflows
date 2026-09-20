@@ -2,7 +2,7 @@
 # ========================
 # System tools shared by all CI jobs. Intentionally excludes Rust.
 # Rebuild this layer when: Node, pnpm, Java, openapi-generator, kubectl,
-# helm, helmfile, k3d, nats, security scanner, redocly, or Zig versions change.
+# helm, helmfile, k3d, nats, security scanner, redocly, Go, or Zig versions change.
 #
 # Included tooling:
 #   - Node.js (LTS)
@@ -14,7 +14,7 @@
 #   - gitleaks, osv-scanner (security scanners)
 #   - @redocly/cli, jscpd, typescript (npm global)
 #   - pnpm (corepack-activated, pinned)
-#   - Python 3, Go (SDK generation utilities)
+#   - Python 3 (apt), Go (pinned upstream tarball — SDK generation utilities)
 #   - file (binary format inspection)
 #   - Build essentials (mold, clang, pkg-config, libssl-dev, libpq-dev)
 #   - Docker CLI + buildx (daemon runs on host; socket mounted at job level)
@@ -37,6 +37,29 @@ ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
 ARG GITLEAKS_VERSION=v8.30.1
 ARG OSV_SCANNER_VERSION=v2.4.0
+# Debian trixie's golang-go package (2:1.24~2, actually go1.24.4) is older
+# than the `go` directive the fleet's newest module declares (cds: go
+# 1.25.5). A cold Pod with a toolchain older than a repo's go.mod directive
+# makes every `go`/`go install`/`go test` invocation download a matching
+# toolchain at run time via GOTOOLCHAIN=auto, even against a healthy, fully
+# reachable local module proxy -- a real, recurring cold-start cost on every
+# such Pod. Pin an upstream tarball instead of an apt package so the image's
+# Go version is a stated fact, not a consequence of whatever Debian's
+# archive happens to carry -- and so it is always >= every go.mod directive
+# in the fleet, removing that run-time toolchain fetch entirely on a warm
+# image.
+#
+# Pinned to the current stable release (1.27.1), not to the fleet's highest
+# declared directive (cds: 1.25.5). Pinning at exactly the highest directive
+# in use today means the next repo that bumps its `go` line reintroduces the
+# very download this removes -- the image's version would rot the moment a
+# single consumer moves. A newer toolchain compiling an older module is
+# safe: the `go` directive in go.mod pins the module's *language semantics*,
+# not the toolchain build; go1.27.1 compiles a `go 1.25.5` module as 1.25.5.
+# Headroom here is free and buys margin against the next go.mod bump.
+ARG GO_VERSION=1.27.1
+ARG GO_SHA256_AMD64=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
+ARG GO_SHA256_ARM64=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
 # release-please: manifest-first, PR-based release automation for every
 # non-Rust SDK language (TS/npm today; Python/Go/Swift/Java as those SDKs
@@ -98,6 +121,9 @@ ARG NATS_VERSION
 ARG BUF_VERSION
 ARG GITLEAKS_VERSION
 ARG OSV_SCANNER_VERSION
+ARG GO_VERSION
+ARG GO_SHA256_AMD64
+ARG GO_SHA256_ARM64
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
 ARG RELEASE_PLEASE_VERSION
 ARG JSCPD_VERSION
@@ -135,8 +161,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-yaml python3-jsonschema python3-pydantic python3-pytest python3-pytest-xdist \
     # Java 21 (openapi-generator-cli)
     openjdk-21-jdk-headless \
-    # Go (SDK generation utilities)
-    golang-go \
     && file --version | grep -Eq '^file-[0-9]+([.][0-9]+)+$' \
     && rm -rf /var/lib/apt/lists/*
 
@@ -170,6 +194,35 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) \
     && ln -s "/usr/local/lib/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}/zig" /usr/local/bin/zig \
     && rm /tmp/zig.tar.xz \
     && zig version
+
+# ── Go (pinned upstream tarball) ──────────────────────────────────────────────
+# Replaces Debian's golang-go package: the distro archive lags the `go`
+# directive the fleet declares (see ARG comment above), which made every cold
+# Pod fetch a matching toolchain at run time, an avoidable cost regardless of
+# how reachable the module proxy is. Pinning the tarball here makes the
+# image's Go version >= every go.mod directive in the fleet, so GOTOOLCHAIN's
+# run-time fetch path is dead code on a warm image rather than the common case.
+#
+# go.dev asset names use amd64/arm64, matching dpkg's arch names directly.
+RUN set -eux; \
+    DPKG_ARCH=$(dpkg --print-architecture); \
+    case "${DPKG_ARCH}" in \
+      amd64) GO_SHA256="${GO_SHA256_AMD64}" ;; \
+      arm64) GO_SHA256="${GO_SHA256_ARM64}" ;; \
+      *) echo "Unsupported arch: ${DPKG_ARCH}" && exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://go.dev/dl/go${GO_VERSION}.linux-${DPKG_ARCH}.tar.gz" \
+      -o /tmp/go.tar.gz; \
+    echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum --check --strict -; \
+    tar -xzf /tmp/go.tar.gz -C /usr/local; \
+    rm /tmp/go.tar.gz; \
+    ln -s /usr/local/go/bin/go /usr/local/bin/go; \
+    ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt; \
+    reported="$(go version)"; \
+    printf '%s\n' "${reported}" | grep -qF "go${GO_VERSION}" \
+      || { echo "go: expected go${GO_VERSION}, got '${reported}'" >&2; exit 1; }; \
+    echo "${reported}"
 
 # ── Node.js (via NodeSource) ───────────────────────────────────────────────────
 #
@@ -464,7 +517,8 @@ RUN UNAME_M=$(uname -m) \
 # ── protoc-gen-connect-openapi (Go plugin for buf gen) ───────────────────────
 # Generates OpenAPI 3 schemas from Connect-flavored protobuf services. Required
 # by brefwiz services that emit OpenAPI alongside Connect bindings (ADR-0085).
-# `go install` into a stable bindir; Go itself is already present (golang-go).
+# `go install` into a stable bindir; Go itself is already present (pinned
+# upstream tarball, see the Go section above).
 #
 # This binary is the ONLY copy consumers resolve: repo buf.gen.yaml files declare
 # `local: protoc-gen-connect-openapi`, which buf looks up on PATH. The version
