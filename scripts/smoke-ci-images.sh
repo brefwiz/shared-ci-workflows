@@ -41,6 +41,12 @@ run_in_image() {
   docker run --rm --entrypoint sh "$IMAGE" -c "$1" 2>&1
 }
 
+# Check installed bytes and sealed receipt after the final image assembled.
+# Same offline check runs for base and full images on both native architectures.
+docker run --rm --entrypoint python3 \
+  -e NODE_PATH=/usr/lib/node_modules:/usr/local/lib/node_modules \
+  "$IMAGE" /usr/local/libexec/verify-typescript-custody.py
+
 # assert_contains LABEL COMMAND EXPECTED_SUBSTRING
 # EXPECTED_SUBSTRING empty => the tool isn't pinned via an ARG in the
 # Dockerfile (e.g. apt-installed with no version pin); only assert the

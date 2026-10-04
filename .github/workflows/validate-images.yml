@@ -27,9 +27,12 @@ on:
   pull_request:
     paths:
       - docker/ci-base.Dockerfile
+      - docker/retain-typescript-custody.py
       - docker/ci.Dockerfile
       - .github/workflows/validate-images.yml
       - scripts/smoke-ci-images.sh
+      - scripts/verify-typescript-custody.py
+      - scripts/tests/test_typescript_custody.py
 
 jobs:
   # Per-arch, native only -- same reasoning as build-images.yml: ci.Dockerfile
@@ -50,6 +53,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Test compiler provider retention
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
       - name: Build ci-base (${{ matrix.arch }}, local only)
         run: |
