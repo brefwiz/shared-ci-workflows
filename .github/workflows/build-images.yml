@@ -19,6 +19,12 @@ env:
   CI_BASE_IMAGE: ghcr.io/brefwiz/ci-base
   CI_IMAGE: ghcr.io/brefwiz/ci
 
+# One publish at a time: two runs interleaving per-arch pushes and the manifest
+# step could assemble an index from different builds.
+concurrency:
+  group: build-images
+  cancel-in-progress: false
+
 jobs:
   # Per-arch native builds. QEMU emulation of arm64 is unviable here:
   # ci.Dockerfile compiles ~10 cargo tools from source (cargo-llvm-cov,
@@ -58,6 +64,7 @@ jobs:
       # ── ci-base ──────────────────────────────────────────────────────────────
 
       - name: Build and push ci-base (${{ matrix.arch }})
+        id: build-base
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -73,6 +80,7 @@ jobs:
       # ── ci (extends the ci-base just pushed for this arch) ──────────────────
 
       - name: Build and push ci (${{ matrix.arch }})
+        id: build-ci
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -87,8 +95,26 @@ jobs:
           cache-from: type=gha,scope=ci-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=ci-${{ matrix.arch }}
 
+      # The digests this run pushed, handed to the manifest job so the index is
+      # built from these exact images, never from a mutable per-arch tag.
+      - name: Record pushed digests
+        if: github.event_name != 'workflow_dispatch' || inputs.push
+        run: |
+          mkdir -p digests
+          echo "${{ steps.build-base.outputs.digest }}" > "digests/ci-base-${{ matrix.arch }}"
+          echo "${{ steps.build-ci.outputs.digest }}" > "digests/ci-${{ matrix.arch }}"
+
+      - name: Upload digests
+        if: github.event_name != 'workflow_dispatch' || inputs.push
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/
+          if-no-files-found: error
+
   # Stitch per-arch images into a single multi-arch manifest under the
-  # canonical tags (latest, sha-<short>).
+  # canonical tags (latest, sha-<short>). `latest` moves only after the index
+  # built under the immutable sha tag is verified to carry one image per arch.
   manifest:
     name: Multi-arch manifest
     needs: build-images
@@ -105,21 +131,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create multi-arch manifests
+      - uses: actions/checkout@v4
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+
+      - name: Create and verify multi-arch manifests
         env:
           IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         run: |
           set -euo pipefail
           short=$(echo ${{ github.sha }} | cut -c1-7)
-          for image in "$CI_BASE_IMAGE" "$CI_IMAGE"; do
+          for name in ci-base ci; do
+            image="$REGISTRY/brefwiz/$name"
+            amd64=$(cat "digests/$name-amd64")
+            arm64=$(cat "digests/$name-arm64")
+            [ -n "$amd64" ] && [ -n "$arm64" ] || { echo "::error::missing per-arch digest for $name"; exit 1; }
             docker buildx imagetools create \
               -t "${image}:sha-${short}" \
-              "${image}:sha-${short}-amd64" \
-              "${image}:sha-${short}-arm64"
+              "${image}@${amd64}" \
+              "${image}@${arm64}"
+            docker buildx imagetools inspect --raw "${image}:sha-${short}" > index.json
+            python3 scripts/assert-index-platforms.py linux/amd64,linux/arm64 index.json
             if [ "$IS_DEFAULT_BRANCH" = "true" ]; then
-              docker buildx imagetools create \
-                -t "${image}:latest" \
-                "${image}:latest-amd64" \
-                "${image}:latest-arm64"
+              docker buildx imagetools create -t "${image}:latest" "${image}:sha-${short}"
             fi
           done

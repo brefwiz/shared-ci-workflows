@@ -1,0 +1,23 @@
+name: Script tests
+
+on:
+  pull_request:
+    paths:
+      - scripts/assert-index-platforms.py
+      - tests/**
+      - .github/workflows/script-tests.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/assert-index-platforms.py
+      - tests/**
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Index assertion tests
+        run: python3 -m unittest discover -s tests -v
