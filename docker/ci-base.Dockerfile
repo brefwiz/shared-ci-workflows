@@ -207,6 +207,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && [ "$(pnpm --version)" = "${PNPM_VERSION}" ] \
     && [ "$(command -v npm)" = /usr/bin/npm ]
 
+COPY docker/retain-typescript-custody.py /usr/local/libexec/retain-typescript-custody.py
+COPY scripts/verify-typescript-custody.py /usr/local/libexec/verify-typescript-custody.py
+RUN NODE_PATH=/usr/lib/node_modules:/usr/local/lib/node_modules \
+      python3 /usr/local/libexec/retain-typescript-custody.py "${TYPESCRIPT_VERSION}" \
+    && chown -R root:root /opt/compiler-custody/typescript \
+    && chmod -R a+rX,go-w /opt/compiler-custody/typescript \
+    && NODE_PATH=/usr/lib/node_modules:/usr/local/lib/node_modules \
+      python3 /usr/local/libexec/verify-typescript-custody.py
+
 # ── tsc: pin assertion + native compiler resolution ───────────────────────────
 # `tsc --version` above proves the install ran. Neither of the two ways this
 # breaks for the producer would fail it, and both surface only in a consumer job.
