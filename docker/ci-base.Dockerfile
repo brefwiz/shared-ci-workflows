@@ -10,6 +10,7 @@
 #   - openapi-generator-cli (pinned jar, exposed as `openapi-generator`)
 #   - kubectl, helm, helmfile, k3d
 #   - nats-server
+#   - protoc (pinned upstream release, with its well-known types include dir)
 #   - buf (protobuf linter / breaking-change detector)
 #   - gitleaks, osv-scanner (security scanners)
 #   - @redocly/cli, jscpd, typescript (npm global)
@@ -35,6 +36,13 @@ ARG HELM_VERSION=4.1.3
 ARG HELMFILE_VERSION=1.4.2
 ARG NATS_VERSION=2.12.5
 ARG BUF_VERSION=1.47.2
+# Upstream protoc, not Debian's: trixie ships 3.21.x, which predates the
+# `debug_redact` field option, so any contract using it fails to compile through
+# prost-build / connectrpc_build (both shell out to the system protoc). One
+# sha256 per architecture, from the release zips.
+ARG PROTOC_VERSION=36.2
+ARG PROTOC_SHA256_AMD64=121f6c7afe1d4d0e3ea6aab9432038599250134cbf4474cb1167d2c7decd4278
+ARG PROTOC_SHA256_ARM64=8b8f18bd2b30346efbc698dd5a73dd7c805f3ef8380f6dfc95c768f3f1852f6a
 ARG GITLEAKS_VERSION=v8.30.1
 ARG OSV_SCANNER_VERSION=v2.4.0
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION=v0.25.6
@@ -96,6 +104,9 @@ ARG HELM_VERSION
 ARG HELMFILE_VERSION
 ARG NATS_VERSION
 ARG BUF_VERSION
+ARG PROTOC_VERSION
+ARG PROTOC_SHA256_AMD64
+ARG PROTOC_SHA256_ARM64
 ARG GITLEAKS_VERSION
 ARG OSV_SCANNER_VERSION
 ARG PROTOC_GEN_CONNECT_OPENAPI_VERSION
@@ -127,8 +138,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # -lunwind as soon as the feature is enabled anywhere in the graph. Static
     # musl targets additionally need a musl-built libunwind; see below.
     libunwind-dev \
-    # Protobuf compiler + well-known .proto files (prost-wkt-types needs them)
-    protobuf-compiler libprotobuf-dev \
+    # protoc itself is installed from the upstream release below; the distro
+    # package is too old for debug_redact.
     # Tools — cmake required by aws-lc-sys (rustls-aws-lc backend) at build time
     ca-certificates curl file git make cmake jq rsync tar xz-utils zstd openssh-client \
     # Python + CI script deps (check-spec.py requires pyyaml + jsonschema)
@@ -139,6 +150,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang-go \
     && file --version | grep -Eq '^file-[0-9]+([.][0-9]+)+$' \
     && rm -rf /var/lib/apt/lists/*
+
+# ── protoc (upstream release) ─────────────────────────────────────────────────
+# Replaces the distro protobuf-compiler/libprotobuf-dev. The release zip carries
+# bin/protoc and include/google/protobuf/*.proto (well-known types, which
+# prost-wkt-types needs); protoc resolves its includes relative to the binary
+# (/usr/local/bin/../include). /usr/include/google/protobuf is kept as a symlink
+# to the same files, so build scripts that pass -I /usr/include still resolve
+# the matching well-known types rather than a stale distro copy.
+# Zip asset names use linux-x86_64 / linux-aarch_64 (note the underscore).
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) protoc_arch="x86_64";  protoc_sha="${PROTOC_SHA256_AMD64}" ;; \
+      arm64) protoc_arch="aarch_64"; protoc_sha="${PROTOC_SHA256_ARM64}" ;; \
+      *) echo "Unsupported arch: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    : "${PROTOC_VERSION:?not set in-stage}"; \
+    protoc_asset="protoc-${PROTOC_VERSION}-linux-${protoc_arch}.zip"; \
+    curl -fsSL --retry 5 --retry-delay 5 \
+      "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${protoc_asset}" \
+      -o "/tmp/${protoc_asset}"; \
+    echo "${protoc_sha}  /tmp/${protoc_asset}" | sha256sum --check; \
+    python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+      "/tmp/${protoc_asset}" /usr/local; \
+    chmod 0755 /usr/local/bin/protoc; \
+    chmod -R a+rX /usr/local/include/google; \
+    mkdir -p /usr/include/google; \
+    ln -s /usr/local/include/google/protobuf /usr/include/google/protobuf; \
+    rm -f "/tmp/${protoc_asset}"; \
+    reported="$(protoc --version)"; \
+    if [ "${reported}" != "libprotoc ${PROTOC_VERSION}" ]; then \
+      echo "protoc: expected libprotoc ${PROTOC_VERSION}, got '${reported}'" >&2; \
+      exit 1; \
+    fi; \
+    test -f /usr/include/google/protobuf/descriptor.proto; \
+    printf 'syntax = "proto3";\nimport "google/protobuf/descriptor.proto";\nmessage M { string s = 1 [debug_redact = true]; }\n' > /tmp/redact.proto; \
+    protoc -I /tmp -I /usr/include --descriptor_set_out=/dev/null /tmp/redact.proto; \
+    rm -f /tmp/redact.proto
 
 # ── Python CI script deps (pip) ────────────────────────────────────────────────
 # pyrefly not packaged in apt (young Rust-based type checker, pip/cargo only).
