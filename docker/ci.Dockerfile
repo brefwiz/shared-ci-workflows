@@ -189,15 +189,25 @@ RUN cargo install cargo-vuln-policy-validator \
     && rm /tmp/smoke-audit.toml /tmp/smoke-deny.toml /tmp/smoke-exceptions.yaml \
     && api-bones-sdk-gen --version
 
+# ── mold linker via cargo config (not RUSTFLAGS) ──────────────────────────────
+# A recipe that sets RUSTFLAGS replaces the env value wholesale; the target
+# linker in $CARGO_HOME/config.toml survives that. Existing config is merged
+# (tables appended only when absent), never clobbered.
+RUN printf '#!/bin/sh\nexec clang -fuse-ld=mold "$@"\n' > /usr/local/bin/clang-mold \
+    && chmod 0755 /usr/local/bin/clang-mold \
+    && touch "${CARGO_HOME}/config.toml" \
+    && for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do \
+         grep -qF "[target.${t}]" "${CARGO_HOME}/config.toml" \
+         || printf '\n[target.%s]\nlinker = "/usr/local/bin/clang-mold"\n' "$t" >> "${CARGO_HOME}/config.toml"; \
+       done
+
 # ── CI-optimised Rust defaults ────────────────────────────────────────────────
 # sccache: RUSTC_WRAPPER is NOT set globally — jobs opt in by setting it to
 # sccache when /var/cache/sccache is mounted in. Defaults for dir/size are set
 # so opt-in jobs only need the one env var.
 ENV CARGO_TERM_COLOR=always \
     CARGO_INCREMENTAL=0 \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang \
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=clang \
-    RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
+    CARGO_NET_RETRY=10 \
     RUST_BACKTRACE=1 \
     SQLX_OFFLINE=true \
     SCCACHE_DIR=/var/cache/sccache \

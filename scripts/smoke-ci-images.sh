@@ -132,6 +132,10 @@ case "$KIND" in
     assert_contains syft          "syft version"                        "${syft_version}"
     assert_contains cargo-audit   "cargo audit --version"                ""
     assert_contains api-bones-sdk-gen "api-bones-sdk-gen --version"      ""
+    # mold must come from cargo config, not RUSTFLAGS: a gnu-target link must
+    # still go through mold when RUSTFLAGS is replaced with something unrelated.
+    mold_cmd='set -e; d=$(mktemp -d); cd "$d"; cargo new -q --bin h; cd h; RUSTFLAGS="-C opt-level=1" cargo build -q; readelf -p .comment target/debug/h | grep -i mold'
+    assert_contains mold-linker "$mold_cmd" "mold"
     # ci extends ci-base: prove the base layer's tools are still reachable
     # through the full image, not just that the Rust layer landed on top.
     assert_contains node-via-ci   "node --version"                       ""
