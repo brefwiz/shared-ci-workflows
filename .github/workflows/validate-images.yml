@@ -15,20 +15,20 @@ name: Validate CI images (PR)
 #   - both images stay local-daemon-only tags (`*:pr-validate`) that are
 #     never pushed and that no consumer's `FROM`/pull can resolve
 #
-# The `ci` build below consumes the `ci-base` image this same job just
+# The shared build helper consumes the `ci-base` image this same job just
 # built, straight out of the runner's local Docker daemon (both are
 # ordinary `docker build`, not buildx-with-a-separate-builder-container, so
 # the daemon's local image store is exactly where the second build's FROM
-# resolves from). That is what closes the gap a `workflow_dispatch`
-# dry-run can't: a dry-run builds ci-base without pushing it, so ci's
-# `FROM ghcr.io/.../ci-base:sha-...` can never resolve -- there is no
-# registry round-trip here for it to depend on.
+# resolves from). Manual `workflow_dispatch` dry-runs use this same helper,
+# so both paths validate the locally built base without a registry round-trip.
 on:
   pull_request:
     paths:
       - docker/ci-base.Dockerfile
       - docker/ci.Dockerfile
       - .github/workflows/validate-images.yml
+      - .github/workflows/build-images.yml
+      - scripts/build-and-smoke-ci-images.sh
       - scripts/smoke-ci-images.sh
 
 jobs:
@@ -51,24 +51,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build ci-base (${{ matrix.arch }}, local only)
-        run: |
-          docker build \
-            -f docker/ci-base.Dockerfile \
-            -t ci-base:pr-validate \
-            .
-
-      - name: Smoke test ci-base (${{ matrix.arch }})
-        run: scripts/smoke-ci-images.sh ci-base:pr-validate base
-
-      - name: Build ci (${{ matrix.arch }}, extends the ci-base just built, local only)
-        run: |
-          docker build \
-            -f docker/ci.Dockerfile \
-            --build-arg CI_BASE_IMAGE=ci-base \
-            --build-arg CI_BASE_TAG=pr-validate \
-            -t ci:pr-validate \
-            .
-
-      - name: Smoke test ci (${{ matrix.arch }})
-        run: scripts/smoke-ci-images.sh ci:pr-validate full
+      - name: Build and smoke CI images (${{ matrix.arch }}, local only)
+        run: scripts/build-and-smoke-ci-images.sh

@@ -55,6 +55,8 @@ Tags: `latest` (main branch) and `sha-<short>` (per-commit).
 A PR that touches either Dockerfile builds and smoke-tests both images
 (`.github/workflows/validate-images.yml`) before merge — local-daemon-only
 tags, never pushed, so a PR build can't move a tag any consumer resolves.
+Manual `workflow_dispatch` with `push: false` uses the same local build and
+smoke checks, without registry authentication or publication.
 
 ## Central security policies
 
