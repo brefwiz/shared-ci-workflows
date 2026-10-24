@@ -216,6 +216,9 @@ ENV CARGO_TERM_COLOR=always \
 # ── Ensure world-writable cargo/rustup (for non-root CI runners) ──────────────
 RUN chmod -R a+rwX /usr/local/cargo /usr/local/rustup
 
+COPY --from=registry.brefwiz.com/brefwiz/static-service-runtime:v1.0.4 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV NODE_USE_SYSTEM_CA=1
+
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci" \
       org.opencontainers.image.description="Full CI image — ci-base + Rust toolchain + cargo tools + policy validator" \
