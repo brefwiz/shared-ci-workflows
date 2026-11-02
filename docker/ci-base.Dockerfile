@@ -492,6 +492,9 @@ RUN set -eux; \
     fi; \
     echo "protoc-gen-connect-openapi ${PROTOC_GEN_CONNECT_OPENAPI_VERSION} at $(command -v protoc-gen-connect-openapi)"
 
+COPY --from=registry.brefwiz.com/brefwiz/static-service-runtime:v1.0.4 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV NODE_USE_SYSTEM_CA=1
+
 # ── Labels ────────────────────────────────────────────────────────────────────
 LABEL org.opencontainers.image.title="ci-base" \
       org.opencontainers.image.description="Base CI image — Node, Java, openapi-generator, kubectl, helm, k3d, nats, buf" \
